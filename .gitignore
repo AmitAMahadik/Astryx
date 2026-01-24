@@ -1,0 +1,101 @@
+############################
+# macOS
+############################
+.DS_Store
+.AppleDouble
+.LSOverride
+
+############################
+# Xcode
+############################
+# User-specific files
+xcuserdata/
+*.xcuserstate
+*.xcuserdatad
+
+# Derived data
+DerivedData/
+build/
+
+# Xcode workspace & project files
+*.moved-aside
+*.xccheckout
+*.xcscmblueprint
+
+# SwiftUI previews
+*.preview-thumbnails/
+
+############################
+# Swift Package Manager
+############################
+.build/
+.swiftpm/
+Package.resolved
+
+############################
+# CocoaPods
+############################
+Pods/
+Podfile.lock
+
+############################
+# Carthage
+############################
+Carthage/Build/
+
+############################
+# Fastlane
+############################
+fastlane/report.xml
+fastlane/Preview.html
+fastlane/screenshots
+fastlane/test_output
+
+############################
+# App signing & secrets
+############################
+*.p12
+*.cer
+*.mobileprovision
+
+# Environment & secrets files
+.env
+.env.*
+Secrets.xcconfig
+Config/Secrets.xcconfig
+
+############################
+# Logs & diagnostics
+############################
+*.log
+*.trace
+*.dSYM.zip
+*.dSYM
+
+############################
+# Test & coverage
+############################
+*.gcno
+*.gcda
+coverage/
+DerivedSources/
+
+############################
+# CI / Automation
+############################
+*.junit
+*.xcresult
+
+############################
+# Temporary files
+############################
+tmp/
+temp/
+*.swp
+*.bak
+
+############################
+# Xcode Cloud / CI artifacts
+############################
+.xcode-cloud/
+

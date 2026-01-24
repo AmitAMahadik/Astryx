@@ -6,6 +6,10 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		BCEFDA172F249BE9000B27BC /* .gitignore in Resources */ = {isa = PBXBuildFile; fileRef = BCEFDA162F249BE0000B27BC /* .gitignore */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXContainerItemProxy section */
 		BCEFD9F82F249AFE000B27BC /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
@@ -27,6 +31,7 @@
 		BCEFD9E82F249AFC000B27BC /* Astryx.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Astryx.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		BCEFD9F72F249AFE000B27BC /* AstryxTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = AstryxTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		BCEFDA012F249AFE000B27BC /* AstryxUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = AstryxUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		BCEFDA162F249BE0000B27BC /* .gitignore */ = {isa = PBXFileReference; lastKnownFileType = text; path = .gitignore; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -75,6 +80,7 @@
 		BCEFD9DF2F249AFC000B27BC = {
 			isa = PBXGroup;
 			children = (
+				BCEFDA162F249BE0000B27BC /* .gitignore */,
 				BCEFD9EA2F249AFC000B27BC /* Astryx */,
 				BCEFD9FA2F249AFE000B27BC /* AstryxTests */,
 				BCEFDA042F249AFE000B27BC /* AstryxUITests */,
@@ -212,6 +218,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				BCEFDA172F249BE9000B27BC /* .gitignore in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
