@@ -201,6 +201,9 @@
 			);
 			mainGroup = BCEFD9DF2F249AFC000B27BC;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				BCEFDA182F252517000B27BC /* XCRemoteSwiftPackageReference "AIProxySwift" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = BCEFD9E92F249AFC000B27BC /* Products */;
 			projectDirPath = "";
@@ -585,6 +588,17 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		BCEFDA182F252517000B27BC /* XCRemoteSwiftPackageReference "AIProxySwift" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/lzell/AIProxySwift";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 0.144.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
 	};
 	rootObject = BCEFD9E02F249AFC000B27BC /* Project object */;
 }

@@ -164,7 +164,7 @@ public actor SwissEphemerisMCPClient {
             "method": "initialize",
             "params": [
                 "protocolVersion": "2024-11-05",
-                "clientInfo": ["name": "ExAstra-iOS", "version": "1.0"],
+                "clientInfo": ["name": "Astryx-iOS", "version": "1.0"],
                 "capabilities": [:]
             ]
         ]
