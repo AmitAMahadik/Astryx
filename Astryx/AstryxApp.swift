@@ -8,12 +8,11 @@
 import SwiftUI
 import SwiftData
 
-//#if canImport(AIProxy)
 import AIProxy
-//#endif
 
 @main
 struct AstryxApp: App {
+    @StateObject private var appState = AppState()
     private let aiService: any AIInsightService = AIInsightServiceFactory.make()
     var sharedModelContainer: ModelContainer = {
         let schema = Schema([
@@ -28,22 +27,11 @@ struct AstryxApp: App {
         }
     }()
     
-    init() {
-        #if canImport(AIProxy)
-       /* AIProxy.configure(
-            logLevel: .debug,
-            printRequestBodies: false,
-            printResponseBodies: false,
-            resolveDNSOverTLS: true,
-            useStableID: true
-        )*/
-        #endif
-    }
-
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            ProfileView()
                 .environment(\.aiInsightService, aiService)
+                .environmentObject(appState)
         }
         .modelContainer(sharedModelContainer)
     }

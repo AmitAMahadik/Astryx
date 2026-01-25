@@ -1,0 +1,651 @@
+//
+//  AppState.swift
+//  ExAstra
+//
+//  Created by Mahadik, Amit on 12/22/25.
+//
+// AppState.swift
+import Foundation
+import Combine
+
+enum Gender: String, CaseIterable, Identifiable, Codable {
+    case male = "Male"
+    case female = "Female"
+    case nonBinary = "Non-binary"
+    case preferNotToSay = "Prefer not to say"
+
+    var id: String { rawValue }
+}
+
+enum FocusArea: String, CaseIterable, Identifiable, Codable {
+    case purpose = "Purpose"
+    case career = "Career"
+    case relationships = "Relationships"
+    case wealth = "Wealth"
+    case health = "Health"
+    case education = "Education"
+    case travel = "Travel"
+
+    var id: String { rawValue }
+    var systemHint: String {
+        switch self {
+        case .purpose: return "Focus on personal values, passions, and life goals."
+        case .career: return "Focus on career path, leadership, timing of opportunities, and work relationships."
+        case .relationships: return "Focus on relationships, communication patterns, compatibility, and emotional well-being."
+        case .wealth: return "Focus on finances, risk, long-term planning, and money habits."
+        case .health: return "Focus on wellness routines, stress patterns, and sustainable health habits."
+        case .education: return "Focus on learning, skill-building, studies, certifications, and intellectual growth."
+        case .travel: return "Focus on journeys, movement, relocation, exploration, and changes in environment."
+        }
+    }
+}
+
+@MainActor
+final class AppState: ObservableObject {
+    private var isRestoringProfile = false
+    // Centralized AI service (AIProxy-backed) used by non-UI code.
+    private let aiService: any AIInsightService = AIInsightServiceFactory.make()
+    // MARK: - Deterministic Lunar Sign via Swiss Ephemeris MCP
+
+    private let swissMcp = SwissEphemerisMCPClient(
+        baseURL: URL(string: "https://conapp-exastra.yellowrock-7298f3d8.westus.azurecontainerapps.io/")!
+    )
+
+    @Published var lunarSignDeterministic: String = "—"
+    @Published var solarSign: String = "—"
+    @Published var chineseSign: String = "—"
+    @Published var moonLongitudeDeterministic: Double? = nil
+    @Published var lunarSignDeterministicError: String? = nil
+    @Published var isRefreshingLunarSignDeterministic: Bool = false
+
+    // AI availability flag (derived from whether an OpenAI API key is available)
+    @Published var isAIAvailable: Bool = false
+
+    @Published var name: String = "" {
+        didSet { guard !isRestoringProfile else { return }; saveProfile() }
+    }
+    @Published var gender: Gender = .preferNotToSay {
+        didSet { guard !isRestoringProfile else { return }; saveProfile() }
+    }
+    @Published var dob: Date = Calendar.current.date(byAdding: .year, value: -30, to: Date()) ?? Date() {
+        didSet { guard !isRestoringProfile else { return }; saveProfile() }
+    }
+    @Published var placeOfBirth: String = "" {
+        didSet { guard !isRestoringProfile else { return }; saveProfile() }
+    }
+    // Time of Birth stored as pure clock components (time-only)
+    @Published var tobHour: Int = 0 {
+        didSet { guard !isRestoringProfile else { return }; saveProfile() }
+    }
+    @Published var tobMinute: Int = 0 {
+        didSet { guard !isRestoringProfile else { return }; saveProfile() }
+    }
+    @Published var tobSecond: Int = 0 {
+        didSet { guard !isRestoringProfile else { return }; saveProfile() }
+    }
+
+    /// DatePicker bridge only (stable reference date in UTC)
+    var timeOfBirthPickerDate: Date {
+        get { Self.dateFromHMSUTC(hour: tobHour, minute: tobMinute, second: tobSecond) }
+        set {
+            let hms = Self.hmsFromDateUTC(newValue)
+            tobHour = hms.h
+            tobMinute = hms.m
+            tobSecond = hms.s
+        }
+    }
+
+    // Validated birth location/timezone (set after place validation in ProfileView)
+    @Published var birthLatitude: Double? = nil {
+        didSet { guard !isRestoringProfile else { return }; saveProfile() }
+    }
+    @Published var birthLongitude: Double? = nil {
+        didSet { guard !isRestoringProfile else { return }; saveProfile() }
+    }
+    @Published var birthTimeZoneIdentifier: String? = nil {
+        didSet { guard !isRestoringProfile else { return }; saveProfile() }
+    }
+
+    // Screen 2
+    @Published var focusArea: FocusArea? = nil {
+        didSet { guard !isRestoringProfile else { return }; saveProfile() }
+    }
+
+    // MARK: - Persistence
+    private let profileDefaultsKey = "AppState.profile"
+
+    private struct PersistedProfile: Codable {
+        var name: String
+        var gender: Gender
+
+        // DOB as date-only components (no timezone drift)
+        var dobYear: Int
+        var dobMonth: Int
+        var dobDay: Int
+
+        var placeOfBirth: String
+
+        // TOB as time-only components (no timezone drift)
+        var tobHour: Int
+        var tobMinute: Int
+        var tobSecond: Int
+
+        var focusArea: FocusArea?
+
+        var birthLatitude: Double?
+        var birthLongitude: Double?
+        var birthTimeZoneIdentifier: String?
+    }
+    
+
+    init() {
+        loadProfile()
+
+        // Initialize AI availability robustly
+        updateAIAvailability()
+
+        // Observe Key changes (if AppState.updateAPIKey is used elsewhere)
+        NotificationCenter.default.addObserver(forName: .openAIKeyDidChange, object: nil, queue: .main) { [weak self] _ in
+            guard let self = self else { return }
+            // Schedule the main-actor-isolated update asynchronously to avoid calling a @MainActor method
+            // from this synchronous nonisolated closure.
+            Task { @MainActor in
+                self.updateAIAvailability()
+            }
+        }
+    }
+
+    func saveProfile() {
+        let ymd = Self.ymdFromDateUTC(dob)
+
+        let profile = PersistedProfile(
+            name: name,
+            gender: gender,
+            dobYear: ymd.y,
+            dobMonth: ymd.m,
+            dobDay: ymd.d,
+            placeOfBirth: placeOfBirth,
+            tobHour: tobHour,
+            tobMinute: tobMinute,
+            tobSecond: tobSecond,
+            focusArea: nil, // focusArea
+            birthLatitude: birthLatitude,
+            birthLongitude: birthLongitude,
+            birthTimeZoneIdentifier: birthTimeZoneIdentifier
+        )
+        do {
+            let data = try JSONEncoder().encode(profile)
+            UserDefaults.standard.set(data, forKey: profileDefaultsKey)
+        } catch {
+            // Silently ignore encoding errors in production
+            // print("Failed to save profile: \(error)")
+        }
+    }
+
+    func resetProfile() {
+        // Remove any persisted profile first
+        UserDefaults.standard.removeObject(forKey: profileDefaultsKey)
+
+        isRestoringProfile = true
+        defer { isRestoringProfile = false }
+
+        // Reset in-memory values
+        name = ""
+        gender = .preferNotToSay
+        let now = Date()
+        let ymd = Self.ymdFromDateUTC(now)
+        dob = Self.dateFromYMDUTC(year: ymd.y - 30, month: ymd.m, day: ymd.d)
+        placeOfBirth = ""
+        tobHour = 12
+        tobMinute = 0
+        tobSecond = 0
+        focusArea = nil
+        birthLatitude = nil
+        birthLongitude = nil
+        birthTimeZoneIdentifier = nil
+
+        // Persist the cleared defaults
+        saveProfile()
+    }
+
+    private func loadProfile() {
+        guard let data = UserDefaults.standard.data(forKey: profileDefaultsKey) else { return }
+        do {
+            let decoded = try JSONDecoder().decode(PersistedProfile.self, from: data)
+
+            isRestoringProfile = true
+            defer { isRestoringProfile = false }
+
+            name = decoded.name
+            gender = decoded.gender
+            dob = Self.dateFromYMDUTC(year: decoded.dobYear, month: decoded.dobMonth, day: decoded.dobDay)
+            placeOfBirth = decoded.placeOfBirth
+            tobHour = decoded.tobHour
+            tobMinute = decoded.tobMinute
+            tobSecond = decoded.tobSecond
+            focusArea = decoded.focusArea
+            birthLatitude = decoded.birthLatitude
+            birthLongitude = decoded.birthLongitude
+            birthTimeZoneIdentifier = decoded.birthTimeZoneIdentifier
+        } catch {
+            // print("Failed to load profile: \(error)")
+        }
+    }
+
+    // Optional: keep a stable “profile summary” for prompt building
+    func profileSummary() -> String {
+        let dobFmt = DateFormatter()
+        dobFmt.dateStyle = .medium
+        dobFmt.timeStyle = .none
+
+        let tobFmt = DateFormatter()
+        tobFmt.dateStyle = .none
+        tobFmt.timeStyle = .short
+
+        return """
+        Name: \(name.isEmpty ? "Unknown" : name)
+        Gender: \(gender.rawValue)
+        Date of Birth: \(dobFmt.string(from: dob))
+        Time of Birth (local): \(String(format: "%02d:%02d", tobHour, tobMinute))
+        Place of Birth: \(placeOfBirth.isEmpty ? "Unknown" : placeOfBirth)
+        Birth Timezone: \(birthTimeZoneIdentifier ?? "Unknown")
+        Birth Coordinates: \((birthLatitude != nil && birthLongitude != nil) ? String(format: "%.5f, %.5f", birthLatitude!, birthLongitude!) : "Unknown")
+        Birth Moment (UTC): \((try? birthMomentUTCISO8601()) ?? "Unknown")
+        Focus Area: \(focusArea?.rawValue ?? "Not selected")
+        """
+    }
+    
+    /// Computes the deterministic Moon info (sidereal sign + longitude) without mutating published state.
+    /// Useful when the UI needs to stage multiple results and apply them in unison.
+    func computeDeterministicMoonInfo() async throws -> (sign: String, longitude: Double) {
+        guard let lat = birthLatitude, let lon = birthLongitude else {
+            throw NSError(domain: "BirthTime", code: 10, userInfo: [
+                NSLocalizedDescriptionKey: "Validate place of birth to determine birth coordinates before calculating Lunar Sign."
+            ])
+        }
+
+        let birthUTC = try birthMomentUTC()
+
+        let moon = try await swissMcp.fetchMoonInfo(
+            datetimeUTC: birthUTC,
+            latitude: lat,
+            longitude: lon
+        )
+
+        return (moon.sign, moon.longitude)
+    }
+    /// Deterministically computes the Lunar Sign (Moon sign) using the hosted Swiss Ephemeris MCP server.
+    /// Requires validated birth timezone + coordinates.
+    func refreshDeterministicLunarSign() async {
+        isRefreshingLunarSignDeterministic = true
+        lunarSignDeterministicError = nil
+        defer { isRefreshingLunarSignDeterministic = false }
+
+        do {
+            guard let lat = birthLatitude, let lon = birthLongitude else {
+                lunarSignDeterministicError = "Validate place of birth to determine birth coordinates before calculating Lunar Sign."
+                return
+            }
+
+            // Uses your existing, correct UTC conversion logic (dob + timeOfBirth + birthTimeZoneIdentifier)
+            let birthUTC = try birthMomentUTC()
+
+            let moon = try await swissMcp.fetchMoonInfo(
+                datetimeUTC: birthUTC,
+                latitude: lat,
+                longitude: lon
+            )
+
+            lunarSignDeterministic = moon.sign
+            moonLongitudeDeterministic = moon.longitude
+        } catch {
+            // Optional: If session expires, one retry pattern:
+            // swissMcp.resetSession()
+            // then retry once.
+            lunarSignDeterministicError = String(describing: error)
+        }
+    }
+    
+    
+    
+    /// Combines `dob` (date-only) and `timeOfBirth` (time-only) into an absolute moment in time using the validated birth timezone,
+    /// then returns that moment as a UTC Date.
+    func birthMomentUTC() throws -> Date {
+        guard let tzId = birthTimeZoneIdentifier,
+              let birthTZ = TimeZone(identifier: tzId) else {
+            throw NSError(domain: "BirthTime", code: 1, userInfo: [
+                NSLocalizedDescriptionKey: "Validate place of birth to determine the correct timezone before calculating UTC birth time."
+            ])
+        }
+
+        // Treat DOB as civil Y/M/D (avoid UTC shifting)
+        let ymd = Calendar(identifier: .gregorian).dateComponents([.year, .month, .day], from: dob)
+
+        var birthCal = Calendar(identifier: .gregorian)
+        birthCal.timeZone = birthTZ
+
+        var comps = DateComponents()
+        comps.calendar = birthCal
+        comps.timeZone = birthTZ
+        comps.year = ymd.year
+        comps.month = ymd.month
+        comps.day = ymd.day
+        comps.hour = tobHour
+        comps.minute = tobMinute
+        comps.second = tobSecond
+
+        guard let birthLocalInstant = birthCal.date(from: comps) else {
+            throw NSError(domain: "BirthTime", code: 2, userInfo: [
+                NSLocalizedDescriptionKey: "Unable to construct birth datetime from Date of Birth + Time of Birth."
+            ])
+        }
+
+        return birthLocalInstant
+    }
+    
+    func birthMomentUTCISO8601() throws -> String {
+        let utcDate = try birthMomentUTC()
+        let formatter = ISO8601DateFormatter()
+        formatter.timeZone = TimeZone(secondsFromGMT: 0)
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return formatter.string(from: utcDate)
+    }
+}
+
+// MARK: - API Key helpers
+extension AppState {
+    /// Runtime updates are unsupported when the app is configured to use Info.plist only.
+    /// Do not persist runtime API keys; prefer build-time Info.plist configuration.
+    func updateAPIKey(_ key: String?) {
+        // No-op persistence for security: runtime overrides are disabled.
+        print("[AppState] updateAPIKey(_) called but runtime API key changes are disabled. Use Info.plist (build-time) to provide OPENAI_API_KEY.")
+        // Re-evaluate availability from Info.plist only.
+        updateAIAvailability()
+        NotificationCenter.default.post(name: .openAIKeyDidChange, object: nil)
+    }
+}
+
+extension Notification.Name {
+    static let openAIKeyDidChange = Notification.Name("openAIKeyDidChange")
+}
+
+// MARK: - AI Astrology lookups (Solar, Lunar, Chinese)
+
+struct VedicMoonSignAIResult: Codable, Equatable {
+    /// Sidereal Moon sign (Rāśi), e.g., "Sagittarius".
+    /// Note: The model may occasionally confuse nakshatra/rashi; treat as best-effort.
+    let rashi: String?
+
+    /// Nakshatra name, e.g., "Purva Ashadha".
+    let nakshatra: String?
+
+    /// 1–4.
+    let pada: Int?
+}
+
+struct AstrologySignsAIResult: Decodable, Equatable {
+    let solarSign: String
+    let vedicMoonSign: VedicMoonSignAIResult?
+    let chineseSign: String
+
+    enum CodingKeys: String, CodingKey {
+        case solarSign
+        case vedicMoonSign
+        case chineseSign
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+
+        solarSign = try container.decode(String.self, forKey: .solarSign)
+        chineseSign = try container.decode(String.self, forKey: .chineseSign)
+
+        // Be tolerant: sometimes the model returns `vedicMoonSign` as an object, sometimes as a string,
+        // and sometimes omits it. Do not fail the whole decode for that.
+        if let object = try? container.decodeIfPresent(VedicMoonSignAIResult.self, forKey: .vedicMoonSign) {
+            vedicMoonSign = object
+        } else if let string = try? container.decodeIfPresent(String.self, forKey: .vedicMoonSign) {
+            vedicMoonSign = VedicMoonSignAIResult(rashi: string, nakshatra: nil, pada: nil)
+        } else {
+            vedicMoonSign = nil
+        }
+    }
+
+    /// Convenience string for UI display.
+    var vedicMoonSignDisplay: String {
+        guard let vedicMoonSign else { return "—" }
+
+        let rashi = (vedicMoonSign.rashi?.trimmingCharacters(in: .whitespacesAndNewlines)).flatMap { $0.isEmpty ? nil : $0 }
+        let nakshatra = (vedicMoonSign.nakshatra?.trimmingCharacters(in: .whitespacesAndNewlines)).flatMap { $0.isEmpty ? nil : $0 }
+        let pada = vedicMoonSign.pada
+
+        switch (rashi, nakshatra, pada) {
+        case let (r?, n?, p?):
+            return "\(r) — \(n) (Pada \(p))"
+        case let (r?, n?, nil):
+            return "\(r) — \(n)"
+        case let (r?, nil, _):
+            return r
+        case let (nil, n?, p?):
+            return "\(n) (Pada \(p))"
+        case let (nil, n?, nil):
+            return n
+        default:
+            return "—"
+        }
+    }
+}
+
+extension AppState {
+    /// Uses the OpenAI model (via AIProxy) to infer Solar (Western Sun), Lunar (Moon sign, tropical), and Chinese zodiac.
+    /// - Important: This is model-derived. Deterministic Moon-sign requires an ephemeris library/service.
+    func lookupAstrologySignsViaSwiftOpenAI() async throws -> AstrologySignsAIResult {
+        guard isAIAvailable else {
+            throw NSError(
+                domain: "Astryx",
+                code: 1,
+                userInfo: [NSLocalizedDescriptionKey: "AIProxy is not configured. Check AIPROXY_SERVICE_URL in Info.plist."]
+            )
+        }
+
+        let system = """
+        You are a precise astrology calculation assistant.
+        Task: Determine the user's
+        (1) Western Solar sign (Sun sign),
+        (2) Vedic Moon sign (Rāśi) using:
+        - Sidereal zodiac
+        - Lahiri (Chitrapaksha) Ayanāṁśa
+        - Drik Panchang–style calculations, and
+        (3) Chinese zodiac animal.
+        Rules:
+        - Use geocentric planetary positions.
+        - Convert local birth time correctly to UTC.
+        - Infer timezone from place of birth if not explicitly provided.
+        - Use Lahiri Ayanāṁśa only (do not use Raman, KP, or tropical).
+        - Determine the Moon’s sidereal longitude and map it to the correct Rāśi.
+        - Also determine the Nakshatra and Pada.
+        - Do NOT guess. If data is insufficient, state so explicitly.
+        - Output MUST be valid JSON only with keys: solarSign, vedicMoonSign, chineseSign.
+        - Do not include markdown, backticks, extra keys, or commentary.
+        """
+
+        let birthUTC = (try? birthMomentUTCISO8601())
+
+        let user = """
+        Profile:
+        \(profileSummary())
+
+        Use the birth moment in UTC (do not use the current time): \(birthUTC ?? "Unknown")
+
+        Return JSON only.
+        """
+
+        // MARK: - DEBUG: Print full AI prompt
+        print("""
+        ================= AI (AIPROXY) ASTROLOGY QUERY =================
+        MODEL: (configured in AIServices.swift / Info.plist)
+
+        --- SYSTEM PROMPT ---
+        \(system)
+
+        --- USER PROMPT ---
+        \(user)
+        ===============================================================
+        """)
+
+        // We use a single prompt string to keep the service abstraction simple.
+        // The system instructions are included at the top to emulate system+user separation.
+        let combinedPrompt = """
+        SYSTEM:\n\(system)\n\nUSER:\n\(user)
+        """
+
+        // MARK: - DEBUG: Print the exact combined prompt sent to the model
+        print("""
+        ================= AI (AIPROXY) COMBINED PROMPT =================
+        \(combinedPrompt)
+        ===============================================================
+        """)
+
+        let content = try await aiService.generateText(prompt: combinedPrompt)
+
+        // MARK: - DEBUG: Print raw AI response
+        print("""
+        ================= AI (AIPROXY) RAW RESPONSE ====================
+        \(content)
+        ===============================================================
+        """)
+
+        guard let data = content.data(using: .utf8) else {
+            throw NSError(
+                domain: "Astryx",
+                code: 2,
+                userInfo: [NSLocalizedDescriptionKey: "Model returned non-UTF8 content"]
+            )
+        }
+
+        do {
+            return try JSONDecoder().decode(AstrologySignsAIResult.self, from: data)
+        } catch {
+            if let extracted = Self.extractFirstJSONObject(from: content),
+               let extractedData = extracted.data(using: .utf8) {
+                return try JSONDecoder().decode(AstrologySignsAIResult.self, from: extractedData)
+            }
+
+            let preview = String(content.prefix(800))
+            print("[AppState] Failed to decode AstrologySignsAIResult. Error: \(error)\nRaw response preview (first 800 chars):\n\(preview)")
+            throw NSError(
+                domain: "Astryx",
+                code: 3,
+                userInfo: [NSLocalizedDescriptionKey: "Failed to parse model JSON: \(content)"]
+            )
+        }
+    }
+    
+    /// Best-effort extraction of the first top-level JSON object from a string.
+    private static func extractFirstJSONObject(from text: String) -> String? {
+        guard let start = text.firstIndex(of: "{") else { return nil }
+        var depth = 0
+        var inString = false
+        var escape = false
+        
+        for i in text.indices[start..<text.endIndex] {
+            let ch = text[i]
+            
+            if inString {
+                if escape {
+                    escape = false
+                } else if ch == "\\" {
+                    escape = true
+                } else if ch == "\"" {
+                    inString = false
+                }
+                continue
+            }
+            
+            if ch == "\"" {
+                inString = true
+                continue
+            }
+            
+            if ch == "{" { depth += 1 }
+            if ch == "}" {
+                depth -= 1
+                if depth == 0 {
+                    return String(text[start...i])
+                }
+            }
+        }
+        
+        return nil
+    }
+    
+    
+    static func ymdFromDateUTC(_ date: Date) -> (y: Int, m: Int, d: Int) {
+        var cal = Calendar(identifier: .gregorian)
+        cal.timeZone = TimeZone(secondsFromGMT: 0)!  // stable reference
+        let c = cal.dateComponents([.year, .month, .day], from: date)
+        return (c.year ?? 1970, c.month ?? 1, c.day ?? 1)
+    }
+    
+
+    static func dateFromYMDUTC(year: Int, month: Int, day: Int) -> Date {
+        var cal = Calendar(identifier: .gregorian)
+        cal.timeZone = TimeZone(secondsFromGMT: 0)!
+        
+        var comps = DateComponents()
+        comps.calendar = cal
+        comps.timeZone = cal.timeZone
+        comps.year = year
+        comps.month = month
+        comps.day = day
+        
+        // Choose noon UTC to avoid any DST/start-of-day edge cases.
+        comps.hour = 12
+        comps.minute = 0
+        comps.second = 0
+        
+        return cal.date(from: comps) ?? Date(timeIntervalSince1970: 0)
+    }
+    
+    private static func hmsFromDateUTC(_ date: Date) -> (h: Int, m: Int, s: Int) {
+        var cal = Calendar(identifier: .gregorian)
+        cal.timeZone = TimeZone(secondsFromGMT: 0)!
+        let c = cal.dateComponents([.hour, .minute, .second], from: date)
+        return (c.hour ?? 0, c.minute ?? 0, c.second ?? 0)
+    }
+
+    private static func dateFromHMSUTC(hour: Int, minute: Int, second: Int) -> Date {
+        var cal = Calendar(identifier: .gregorian)
+        cal.timeZone = TimeZone(secondsFromGMT: 0)!
+
+        var comps = DateComponents()
+        comps.calendar = cal
+        comps.timeZone = cal.timeZone
+        comps.year = 2001
+        comps.month = 1
+        comps.day = 1
+        comps.hour = hour
+        comps.minute = minute
+        comps.second = second
+
+        return cal.date(from: comps) ?? Date(timeIntervalSince1970: 0)
+    }
+}
+
+private extension AppState {
+    func updateAIAvailability() {
+        // AI is considered available in this build because AIProxy is configured in code
+        // (both PARTIAL_KEY and SERVICE_URL are currently hard-coded in AIInsightServiceFactory).
+        isAIAvailable = true
+        print("[AppState] AIProxy is configured in code — AI features enabled.")
+    }
+
+    static func discoverOpenAIKey() -> String? {
+        if let bundleKey = Bundle.main.object(forInfoDictionaryKey: "OPENAI_API_KEY") as? String,
+           !bundleKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+           bundleKey != "$(OPENAI_API_KEY)" {
+            return bundleKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        return nil
+    }
+}
