@@ -38,7 +38,7 @@ struct AstryxApp: App {
     var body: some Scene {
         WindowGroup {
             TabView(selection: $selectedTab) {
-              /*  NavigationStack {
+                NavigationStack {
                     ProfileView()
                         .environment(\.aiInsightService, aiService)
                         .environmentObject(appState)
@@ -46,7 +46,7 @@ struct AstryxApp: App {
                 .tabItem {
                     Label("Profile", systemImage: "person.crop.circle")
                 }
-                .tag(AppTab.profile)*/
+                .tag(AppTab.profile)
                 
                 NavigationStack {
                     ChatView()
