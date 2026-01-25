@@ -10,6 +10,7 @@
 ############################
 # User-specific files
 xcuserdata/
+*.xcodeproj/project.xcworkspace/xcuserdata/
 *.xcuserstate
 *.xcuserdatad
 
@@ -30,13 +31,11 @@ build/
 ############################
 .build/
 .swiftpm/
-Package.resolved
 
 ############################
 # CocoaPods
 ############################
 Pods/
-Podfile.lock
 
 ############################
 # Carthage
@@ -98,4 +97,3 @@ temp/
 # Xcode Cloud / CI artifacts
 ############################
 .xcode-cloud/
-

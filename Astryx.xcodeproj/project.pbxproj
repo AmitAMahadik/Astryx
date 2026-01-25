@@ -8,6 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		BCEFDA172F249BE9000B27BC /* .gitignore in Resources */ = {isa = PBXBuildFile; fileRef = BCEFDA162F249BE0000B27BC /* .gitignore */; };
+		BCEFDA2B2F25582C000B27BC /* AIProxy in Frameworks */ = {isa = PBXBuildFile; productRef = BCEFDA2A2F25582C000B27BC /* AIProxy */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -34,9 +35,22 @@
 		BCEFDA162F249BE0000B27BC /* .gitignore */ = {isa = PBXFileReference; lastKnownFileType = text; path = .gitignore; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		BCEFDA2D2F255E45000B27BC /* Exceptions for "Astryx" folder in "Astryx" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = BCEFD9E72F249AFC000B27BC /* Astryx */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		BCEFD9EA2F249AFC000B27BC /* Astryx */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				BCEFDA2D2F255E45000B27BC /* Exceptions for "Astryx" folder in "Astryx" target */,
+			);
 			path = Astryx;
 			sourceTree = "<group>";
 		};
@@ -57,6 +71,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				BCEFDA2B2F25582C000B27BC /* AIProxy in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -118,6 +133,7 @@
 			);
 			name = Astryx;
 			packageProductDependencies = (
+				BCEFDA2A2F25582C000B27BC /* AIProxy */,
 			);
 			productName = Astryx;
 			productReference = BCEFD9E82F249AFC000B27BC /* Astryx.app */;
@@ -202,7 +218,7 @@
 			mainGroup = BCEFD9DF2F249AFC000B27BC;
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
-				BCEFDA182F252517000B27BC /* XCRemoteSwiftPackageReference "AIProxySwift" */,
+				BCEFDA292F25582C000B27BC /* XCRemoteSwiftPackageReference "AIProxySwift" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = BCEFD9E92F249AFC000B27BC /* Products */;
@@ -282,6 +298,8 @@
 		BCEFDA092F249AFE000B27BC /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				AIPROXY_PARTIAL_KEY = "v2|1bb98c48|gO7CG1rPMen7sVxe";
+				AIPROXY_SERVICE_URL = "https://api.aiproxy.com/07603b96/2bbe7ff6";
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
 				CLANG_ANALYZER_NONNULL = YES;
@@ -346,6 +364,8 @@
 		BCEFDA0A2F249AFE000B27BC /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				AIPROXY_PARTIAL_KEY = "v2|1bb98c48|gO7CG1rPMen7sVxe";
+				AIPROXY_SERVICE_URL = "https://api.aiproxy.com/07603b96/2bbe7ff6";
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
 				CLANG_ANALYZER_NONNULL = YES;
@@ -405,11 +425,14 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = VHYDM4DE58;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = Astryx/Info.plist;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.lifestyle";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -422,6 +445,7 @@
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = ai.axolotllabs.Astryx;
 				PRODUCT_NAME = "$(TARGET_NAME)";
+				PROVISIONING_PROFILE_SPECIFIER = "";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
@@ -437,11 +461,14 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = VHYDM4DE58;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = Astryx/Info.plist;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.lifestyle";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -454,6 +481,7 @@
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = ai.axolotllabs.Astryx;
 				PRODUCT_NAME = "$(TARGET_NAME)";
+				PROVISIONING_PROFILE_SPECIFIER = "";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
@@ -590,7 +618,7 @@
 /* End XCConfigurationList section */
 
 /* Begin XCRemoteSwiftPackageReference section */
-		BCEFDA182F252517000B27BC /* XCRemoteSwiftPackageReference "AIProxySwift" */ = {
+		BCEFDA292F25582C000B27BC /* XCRemoteSwiftPackageReference "AIProxySwift" */ = {
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/lzell/AIProxySwift";
 			requirement = {
@@ -599,6 +627,14 @@
 			};
 		};
 /* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		BCEFDA2A2F25582C000B27BC /* AIProxy */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = BCEFDA292F25582C000B27BC /* XCRemoteSwiftPackageReference "AIProxySwift" */;
+			productName = AIProxy;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = BCEFD9E02F249AFC000B27BC /* Project object */;
 }

@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>AIPROXY_PARTIAL_KEY
+AIPROXY_PARTIAL_KEY
+AIPROXY_PARTIAL_KEY
+AIPROXY_PARTIAL_KEY</key>
+	<string>$(AIPROXY_PARTIAL_KEY)</string>
+	<key>AIPROXY_SERVICE_URL</key>
+	<string>$(AIPROXY_SERVICE_URL)</string>
+</dict>
+</plist>
