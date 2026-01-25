@@ -1,51 +1,56 @@
 //
 //  ChatViewModel.swift
-//  ExAstra
+//  Astryx
 //
-//  Created by Mahadik, Amit on 12/22/25.
+//  Updated to support ChatView.swift
 //
 
-// ChatViewModel.swift
 import Foundation
 import SwiftUI
-import SwiftOpenAI
 import Combine
 
 @MainActor
 final class ChatViewModel: ObservableObject {
-    @Published var messages: [ChatMessage] = []
-    @Published var draft: String = ""
-    @Published var isSending: Bool = false
-    @Published var errorText: String? = nil
+    enum Role: String, Codable {
+        case user, assistant, system
+    }
 
-    private var service: OpenAIService?
+    struct Message: Identifiable, Codable {
+        let id: UUID
+        let role: Role
+        var text: String
+        let date: Date
 
+        init(id: UUID = .init(), role: Role, text: String, date: Date = .init()) {
+            self.id = id
+            self.role = role
+            self.text = text
+            self.date = date
+        }
+    }
+
+    @Published var messages: [Message] = []
+    @Published var input: String = ""
+    @Published var isStreaming: Bool = false
+    @Published var errorMessage: String? = nil
+
+    private var aiService: any AIInsightService = AIInsightServiceFactory.make()
+
+    // Optional profile/context support retained from previous implementation.
     private var profileContext: String = ""
     private var focusHint: String = ""
-
     private var lunarSign: String = "—"
     private var solarSign: String = "—"
     private var chineseSign: String = "—"
-    
-    // MARK: - Init
-    init() {
-        // Only initialize service from Info.plist (do not read environment or UserDefaults)
-        let bundleKey = Bundle.main.object(forInfoDictionaryKey: "OPENAI_API_KEY") as? String
-        if let apiKey = bundleKey, !apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, apiKey != "$(OPENAI_API_KEY)" {
-            self.service = OpenAIServiceFactory.service(apiKey: apiKey)
-        } else {
-            self.service = nil
-            print("Warning: OPENAI_API_KEY not set in Info.plist or is placeholder — AI features disabled for this build.")
-        }
+
+    private var currentSendTask: Task<Void, Never>?
+
+    deinit {
+        currentSendTask?.cancel()
     }
-    
-    private func ensureService() {
-        if service != nil { return }
-        if let bundleKey = Bundle.main.object(forInfoDictionaryKey: "OPENAI_API_KEY") as? String,
-           !bundleKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-           bundleKey != "$(OPENAI_API_KEY)" {
-            service = OpenAIServiceFactory.service(apiKey: bundleKey)
-        }
+
+    func setService(_ service: any AIInsightService) {
+        self.aiService = service
     }
 
     func seedIfNeeded(profile: String, focusHint: String, lunarSign: String, solarSign: String, chineseSign: String) {
@@ -58,7 +63,6 @@ final class ChatViewModel: ObservableObject {
         self.chineseSign = chineseSign
 
         let nameLine: String = {
-            // Extract the name from the profile summary if present
             if let line = profile.split(separator: "\n").first(where: { $0.starts(with: "Name:") }) {
                 let fullName = line.replacingOccurrences(of: "Name:", with: "").trimmingCharacters(in: .whitespaces)
                 let firstName = fullName.split(separator: " ").first.map(String.init) ?? ""
@@ -69,27 +73,39 @@ final class ChatViewModel: ObservableObject {
             return "Hello."
         }()
 
-        messages.append(.init(role: .assistant, content: """
+        messages.append(.init(role: .assistant, text: """
             \(nameLine) I’m your astrologer guide. Ask a specific question and I’ll tailor the answer to your profile and focus area.
             """))
     }
 
-    func send() async {
-        errorText = nil
-        let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty else { return }
+    func sendPrompt() {
+        currentSendTask?.cancel()
+        currentSendTask = Task { [weak self] in
+            guard let self else { return }
+            await self.send()
+        }
+    }
 
-        draft = ""
-        messages.append(.init(role: .user, content: text))
-        
-        // Create a placeholder assistant message that we will “fill” as tokens stream in
-        messages.append(.init(role: .assistant, content: ""))
-        let assistantIndex = messages.count - 1
-        
-        isSending = true
-        defer { isSending = false }
+    private func send() async {
+        errorMessage = nil
+        let trimmed = input.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, !isStreaming else { return }
+
+        // Append user message
+        let userMsg = Message(role: .user, text: trimmed)
+        messages.append(userMsg)
+        input = ""
+
+        // Append placeholder assistant message
+        let assistantMsg = Message(role: .assistant, text: "")
+        let assistantID = assistantMsg.id
+        messages.append(assistantMsg)
+
+        isStreaming = true
+        defer { isStreaming = false }
 
         do {
+            // Optionally include profile/system context
             let system = """
 \(ChatViewPrompts.system)
 
@@ -107,54 +123,59 @@ Focus Guidance:
 \(focusHint)
 """
 
-            var chat: [ChatCompletionParameters.Message] = [
-                .init(role: .system, content: .text(system))
-            ]
+            // Build transcript excluding the placeholder assistant message.
+            let transcriptLines: [String] = messages
+                .filter { $0.id != assistantID }
+                .map { message in
+                    switch message.role {
+                    case .user:
+                        return "User: \(message.text)"
+                    case .assistant:
+                        return "Assistant: \(message.text)"
+                    case .system:
+                        return "System: \(message.text)"
+                    }
+                }
 
-            for m in messages {
-                switch m.role {
-                case .user:
-                    chat.append(.init(role: .user, content: .text(m.content)))
-                case .assistant:
-                    chat.append(.init(role: .assistant, content: .text(m.content)))
+            let transcript = transcriptLines.joined(separator: "\n")
+
+            let combinedPrompt = """
+SYSTEM:
+\(system)
+
+CONVERSATION:
+\(transcript)
+
+INSTRUCTIONS:
+- Continue the conversation as the Assistant.
+- Do not repeat the system prompt.
+- Be concise and specific.
+"""
+
+            // Stream response using AIProxy-backed service.
+            let stream = try await aiService.streamText(prompt: combinedPrompt, secondsToWait: 60)
+            for try await delta in stream {
+                try Task.checkCancellation()
+                guard !delta.isEmpty else { continue }
+                if let idx = messages.firstIndex(where: { $0.id == assistantID }) {
+                    messages[idx].text += delta
                 }
             }
 
-            // Choose a model you have enabled. SwiftOpenAI supports .gpt4o (and others).
-            let params = ChatCompletionParameters(
-                messages: chat,
-                model: .gpt4turbo
-            )
-
-            // Ensure service is initialized (supports runtime setup via Profile -> API Key)
-            ensureService()
-            guard let service = service else {
-                let msg = "AI features are disabled for this build. No API key configured."
-                errorText = msg
-                messages[assistantIndex].content = "Sorry — AI responses are not available in this build."
-                return
+            if let idx = messages.firstIndex(where: { $0.id == assistantID }),
+               messages[idx].text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                messages[idx].text = "I couldn’t generate a response."
             }
-
-            // ✅ STREAM
-            let stream = try await service.startStreamedChat(parameters: params)  //  //[oai_citation:1‡GitHub](https://github.com/jamesrochabrun/SwiftOpenAI)
-            for try await chunk in stream {
-                let delta = chunk.choices?.first?.delta?.content ?? ""
-                guard !delta.isEmpty else { continue }
-                messages[assistantIndex].content += delta
-            }
-
-            // Optional: tidy if model returns whitespace only
-            if messages[assistantIndex].content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                messages[assistantIndex].content = "I couldn’t generate a response."
-            }
-
-        } catch APIError.responseUnsuccessful(let description, let statusCode) {
-            errorText = "Request failed (\(statusCode)): \(description)"
-            // Optional: replace placeholder with error
-            messages[assistantIndex].content = "Sorry — something went wrong."
         } catch {
-            errorText = error.localizedDescription
-            messages[assistantIndex].content = "Sorry — something went wrong."
+            // Remove placeholder if empty
+            if let idx = messages.firstIndex(where: { $0.id == assistantID }) {
+                if messages[idx].text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    messages.remove(at: idx)
+                } else {
+                    messages[idx].text = "Sorry — something went wrong."
+                }
+            }
+            errorMessage = error.localizedDescription
         }
     }
 }
