@@ -49,6 +49,15 @@ struct AstryxApp: App {
                 .tag(AppTab.profile)
                 
                 NavigationStack {
+                    FocusView()
+                        .environmentObject(appState)
+                }
+                .tabItem {
+                    Label("Focus", systemImage: "sparkles")
+                }
+                .tag(AppTab.focus)
+                
+                NavigationStack {
                     ChatView()
                         .environment(\.aiInsightService, aiService)
                         .environmentObject(appState)
