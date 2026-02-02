@@ -6,13 +6,6 @@
 //
 
 
-//
-//  FocusSummaryViewModel.swift
-//  Astryx
-//
-//  Created by Axolotl Labs LLC
-//
-
 import Foundation
 import Combine
 
@@ -32,7 +25,7 @@ final class FocusSummaryViewModel: ObservableObject {
 
     private let service: FocusSummaryServiceProtocol
 
-    init(service: FocusSummaryServiceProtocol = DefaultFocusSummaryService()) {
+    init(service: FocusSummaryServiceProtocol = AIBackedFocusSummaryService()) {
         self.service = service
     }
 
@@ -114,12 +107,13 @@ struct FocusSummaryContext: Sendable {
     var date: Date = .init()
     var timezoneIdentifier: String = TimeZone.current.identifier
 
-    // Add fields as needed:
-    // var userName: String?
-    // var localeIdentifier: String = Locale.current.identifier
-    // var natalChartSummary: String?
-    // var currentTransitsSummary: String?
-    // var userNotes: String?
+    // Astrology context used to generate haiku-style weekly guidance.
+    var lunarSign: String = ""
+    var solarSign: String = ""
+    var chineseSign: String = ""
+
+    /// Free-form profile / preferences / constraints that should be considered by the model.
+    var profile: String = ""
 }
 
 // MARK: - Service Protocol
@@ -261,5 +255,54 @@ struct DefaultFocusSummaryService: FocusSummaryServiceProtocol {
             idx = end
         }
         return result
+    }
+}
+
+// MARK: - AI-backed Service
+
+/// Streams haiku-style weekly guidance using `FocusSummaryPrompts`.
+///
+/// Uses `AIInsightServiceFactory.make()` by default (AIProxy-backed in production), but can be injected for tests.
+struct AIBackedFocusSummaryService: FocusSummaryServiceProtocol {
+    private let ai: any AIInsightService
+
+    init(ai: any AIInsightService = AIInsightServiceFactory.make()) {
+        self.ai = ai
+    }
+
+    func streamSummary(
+        for area: FocusArea,
+        context: FocusSummaryContext
+    ) -> AsyncThrowingStream<String, Error> {
+        let focusAreaName = String(describing: area)
+
+        // The AIInsightService interface is single-string today, so we embed SYSTEM + USER blocks.
+        let prompt = """
+        SYSTEM\n\
+        \(FocusSummaryPrompts.system)\
+
+        USER\n\
+        \(FocusSummaryPrompts.user(
+            focusArea: focusAreaName,
+            lunarSign: context.lunarSign,
+            solarSign: context.solarSign,
+            chineseSign: context.chineseSign,
+            profile: context.profile
+        ))
+        """
+
+        return AsyncThrowingStream { continuation in
+            Task {
+                do {
+                    let stream = try await ai.streamText(prompt: prompt, secondsToWait: 120)
+                    for try await delta in stream {
+                        continuation.yield(delta)
+                    }
+                    continuation.finish()
+                } catch {
+                    continuation.finish(throwing: error)
+                }
+            }
+        }
     }
 }

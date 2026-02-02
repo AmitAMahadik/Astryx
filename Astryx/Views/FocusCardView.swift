@@ -15,9 +15,6 @@ struct FocusCardView: View {
     let backText: String
     let isExpanded: Bool
 
-    @State private var streamedBackText: String = ""
-    @State private var hasStreamedBackText: Bool = false
-    @State private var streamTask: Task<Void, Never>? = nil
     @State private var ellipsisPhase: Int = 0
     private let ellipsisTimer = Timer.publish(every: 0.28, on: .main, in: .common).autoconnect()
 
@@ -33,47 +30,6 @@ struct FocusCardView: View {
         self.isFlipped = isFlipped
         self.backText = backText
         self.isExpanded = isExpanded
-    }
-
-    private func resetStreamingState() {
-        streamTask?.cancel()
-        streamTask = nil
-        streamedBackText = ""
-        hasStreamedBackText = false
-    }
-
-    private func startStreamingIfNeeded() {
-        guard isFlipped else { return }
-
-        // If we've already streamed once for this backText, show it immediately.
-        if hasStreamedBackText {
-            streamedBackText = backText
-            return
-        }
-
-        // Cancel any prior stream and start a new one.
-        streamTask?.cancel()
-        streamedBackText = ""
-
-        let fullText = backText
-        streamTask = Task {
-            // Small initial delay so the flip completes before typing begins.
-            try? await Task.sleep(nanoseconds: 120_000_000)
-
-            for ch in fullText {
-                if Task.isCancelled { return }
-                await MainActor.run {
-                    streamedBackText.append(ch)
-                }
-                // Typing speed (tweak as desired)
-                try? await Task.sleep(nanoseconds: 18_000_000)
-            }
-
-            await MainActor.run {
-                hasStreamedBackText = true
-                streamedBackText = fullText
-            }
-        }
     }
 
     private var animatedEllipsis: String {
@@ -94,7 +50,7 @@ struct FocusCardView: View {
         if isWaitingPlaceholder {
             return "Reaching for the stars" + animatedEllipsis
         }
-        return hasStreamedBackText ? backText : streamedBackText
+        return backText
     }
 
     private var iconName: String {
@@ -184,12 +140,6 @@ struct FocusCardView: View {
                 )
         }
         .animation(.spring(response: 0.38, dampingFraction: 0.82), value: isFlipped)
-        .onAppear {
-            // If we appear already flipped, handle it.
-            if isFlipped {
-                startStreamingIfNeeded()
-            }
-        }
         .onReceive(ellipsisTimer) { _ in
             guard isFlipped, isWaitingPlaceholder else {
                 ellipsisPhase = 0
@@ -197,22 +147,7 @@ struct FocusCardView: View {
             }
             ellipsisPhase = (ellipsisPhase % 3) + 1 // cycles 1,2,3 -> "·", "··", "···"
         }
-        .onChange(of: isFlipped) { _, newValue in
-            if newValue {
-                startStreamingIfNeeded()
-            }
-        }
-        .onChange(of: backText) { _, _ in
-            // New content should re-stream on next flip.
-            resetStreamingState()
-            if isFlipped {
-                startStreamingIfNeeded()
-            }
-        }
-        .onDisappear {
-            streamTask?.cancel()
-            streamTask = nil
-        }
+        .onDisappear { }
         .contentShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
         .accessibilityLabel(Text(area.rawValue))
         .accessibilityAddTraits(isSelected ? .isSelected : [])

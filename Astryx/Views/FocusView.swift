@@ -116,22 +116,51 @@ struct FocusView: View {
                 .ignoresSafeArea()
             }
         }
-        .onChange(of: state.focusArea) { _, newValue in
-            if newValue == nil {
-                collapseExpanded()
+        .task(id: state.focusArea) {
+            // If the selection was cleared, collapse the expanded card and stop.
+            guard let area = state.focusArea else {
+                await MainActor.run { collapseExpanded() }
                 return
             }
 
-            guard let area = newValue else { return }
+            // Prefer the cached deterministic lunar sign, but compute it on-demand if needed.
+            var lunar = await MainActor.run { state.lunarSignDeterministic }
+            if lunar == "—" {
+                if let computed = try? await state.computeDeterministicMoonInfo() {
+                    lunar = computed.sign
+                }
+            }
+
+            // Build a lightweight profile context for the model.
+            let dob = await MainActor.run { state.dob.formatted(date: .abbreviated, time: .omitted) }
+            let tob = await MainActor.run { String(format: "%02d:%02d:%02d", state.tobHour, state.tobMinute, state.tobSecond) }
+            let tz = await MainActor.run { state.birthTimeZoneIdentifier ?? "" }
+
+            let name = await MainActor.run { state.name }
+            let gender = await MainActor.run { state.gender.rawValue }
+            let pob = await MainActor.run { state.placeOfBirth }
+            let solar = await MainActor.run { state.solarSign }
+            let chinese = await MainActor.run { state.chineseSign }
+
+            let profileText = """
+            Name: \(name)
+            Gender: \(gender)
+            DOB: \(dob)
+            TOB: \(tob)
+            Place: \(pob)
+            Timezone: \(tz)
+            """
 
             let context = FocusSummaryContext(
                 date: Date(),
-                timezoneIdentifier: TimeZone.current.identifier
+                timezoneIdentifier: TimeZone.current.identifier,
+                lunarSign: lunar,
+                solarSign: solar,
+                chineseSign: chinese,
+                profile: profileText
             )
 
-            Task { @MainActor in
-                await vm.streamSummary(for: area, context: context)
-            }
+            await vm.streamSummary(for: area, context: context)
         }
     }
 
