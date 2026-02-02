@@ -36,7 +36,7 @@ final class ChatViewModel: ObservableObject {
 
     private var aiService: any AIInsightService = AIInsightServiceFactory.make()
 
-    // Optional profile/context support retained from previous implementation.
+    // Profile + astrology context injected by the UI (AppState-backed).
     private var profileContext: String = ""
     private var focusHint: String = ""
     private var lunarSign: String = "—"
@@ -53,14 +53,35 @@ final class ChatViewModel: ObservableObject {
         self.aiService = service
     }
 
-    func seedIfNeeded(profile: String, focusHint: String, lunarSign: String, solarSign: String, chineseSign: String) {
-        guard messages.isEmpty else { return }
+    /// Sets the free-form user profile context (e.g., name/DOB/TOB/place/timezone + any notes).
+    /// This is safe to call repeatedly (e.g., before each send) to keep the model grounded.
+    func setProfileContext(_ context: String) {
+        self.profileContext = context
+    }
 
-        self.profileContext = profile
+    /// Sets the current astrology/sign context used to ground chat responses.
+    func setAstrologyContext(
+        focusHint: String = "",
+        lunarSign: String,
+        solarSign: String,
+        chineseSign: String
+    ) {
         self.focusHint = focusHint
         self.lunarSign = lunarSign
         self.solarSign = solarSign
         self.chineseSign = chineseSign
+    }
+
+    func seedIfNeeded(profile: String, focusHint: String, lunarSign: String, solarSign: String, chineseSign: String) {
+        guard messages.isEmpty else { return }
+
+        setProfileContext(profile)
+        setAstrologyContext(
+            focusHint: focusHint,
+            lunarSign: lunarSign,
+            solarSign: solarSign,
+            chineseSign: chineseSign
+        )
 
         let nameLine: String = {
             if let line = profile.split(separator: "\n").first(where: { $0.starts(with: "Name:") }) {
@@ -112,7 +133,7 @@ final class ChatViewModel: ObservableObject {
 Current date: \(DateFormatter.exAstraISO.string(from: Date()))
 
 User Profile:
-\(profileContext)
+\(profileContext.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "(not provided)" : profileContext)
 
 Signs:
 - Lunar (Sidereal): \(lunarSign)
@@ -120,7 +141,7 @@ Signs:
 - Chinese: \(chineseSign)
 
 Focus Guidance:
-\(focusHint)
+\(focusHint.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "(none)" : focusHint)
 """
 
             // Build transcript excluding the placeholder assistant message.

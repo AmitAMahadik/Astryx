@@ -11,6 +11,7 @@ import SwiftUI
 
 struct ChatView: View {
     @Environment(\.aiInsightService) private var aiService
+    @EnvironmentObject private var state: AppState
 
     @StateObject private var viewModel = ChatViewModel()
 
@@ -49,6 +50,7 @@ struct ChatView: View {
                     .textFieldStyle(.roundedBorder)
                     .disabled(viewModel.isStreaming)
                     .onSubmit {
+                        applyContextToViewModel()
                         viewModel.sendPrompt()
                     }
 
@@ -58,6 +60,7 @@ struct ChatView: View {
                 }
 
                 Button(action: {
+                    applyContextToViewModel()
                     viewModel.sendPrompt()
                 }) {
                     Image(systemName: "paperplane.fill")
@@ -72,6 +75,7 @@ struct ChatView: View {
         .navigationTitle("Chat")
         .task {
             viewModel.setService(aiService)
+            applyContextToViewModel()
         }
     }
 
@@ -108,5 +112,37 @@ struct ChatView: View {
         case .system:
             return Color.yellow.opacity(0.12)
         }
+    }
+
+    private func applyContextToViewModel() {
+        viewModel.setProfileContext(makeProfileContext())
+        viewModel.setAstrologyContext(
+            focusHint: "",
+            lunarSign: state.lunarSignDeterministic,
+            solarSign: state.solarSign,
+            chineseSign: state.chineseSign
+        )
+    }
+
+    private func makeProfileContext() -> String {
+        let dob = state.dob.formatted(date: .abbreviated, time: .omitted)
+        let tob = String(format: "%02d:%02d:%02d", state.tobHour, state.tobMinute, state.tobSecond)
+        let tz = state.birthTimeZoneIdentifier ?? ""
+
+        // Prefer the cached deterministic lunar sign when available.
+        let lunar = state.lunarSignDeterministic
+
+        return """
+        Name: \(state.name)
+        Gender: \(state.gender.rawValue)
+        DOB: \(dob)
+        TOB: \(tob)
+        Place: \(state.placeOfBirth)
+        Timezone: \(tz)
+
+        Solar sign (Western): \(state.solarSign)
+        Lunar sign (Sidereal): \(lunar)
+        Chinese sign: \(state.chineseSign)
+        """
     }
 }

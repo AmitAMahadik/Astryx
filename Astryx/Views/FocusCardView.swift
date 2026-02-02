@@ -46,11 +46,195 @@ struct FocusCardView: View {
         return normalized.hasPrefix("reaching for the stars")
     }
 
+
     private var visibleBackText: String {
         if isWaitingPlaceholder {
             return "Reaching for the stars" + animatedEllipsis
         }
         return backText
+    }
+
+    // MARK: - Streaming Text Formatting
+
+    private enum FocusSection: String {
+        case theme = "THEME"
+        case haiku = "HAIKU"
+        case `do` = "DO"
+        case avoid = "AVOID"
+    }
+
+    private struct ParsedFocusSummary {
+        var theme: String = ""
+        var haikuLines: [String] = []
+        var doLine: String = ""
+        var avoidLine: String = ""
+
+        var hasAnyContent: Bool {
+            !theme.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ||
+            !haikuLines.joined().trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ||
+            !doLine.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ||
+            !avoidLine.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        }
+    }
+
+    /// Parses streamed text in the format:
+    /// THEME: ...
+    /// HAIKU: line1
+    /// line2
+    /// line3
+    /// DO: ...
+    /// AVOID: ...
+    ///
+    /// Works even when the text is partial (streaming).
+    private func parseSummary(_ text: String) -> ParsedFocusSummary {
+        let normalized = text
+            .replacingOccurrences(of: "\r", with: "")
+
+        let lines = normalized
+            .split(separator: "\n", omittingEmptySubsequences: false)
+            .map { String($0) }
+
+        var parsed = ParsedFocusSummary()
+        var current: FocusSection? = nil
+
+        func assign(_ section: FocusSection, content: String) {
+            let trimmed = content.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty else { return }
+            switch section {
+            case .theme:
+                parsed.theme = parsed.theme.isEmpty ? trimmed : (parsed.theme + " " + trimmed)
+            case .haiku:
+                parsed.haikuLines.append(trimmed)
+            case .do:
+                parsed.doLine = parsed.doLine.isEmpty ? trimmed : (parsed.doLine + " " + trimmed)
+            case .avoid:
+                parsed.avoidLine = parsed.avoidLine.isEmpty ? trimmed : (parsed.avoidLine + " " + trimmed)
+            }
+        }
+
+        for line in lines {
+            let trimmedLine = line.trimmingCharacters(in: .whitespacesAndNewlines)
+            if trimmedLine.isEmpty { continue }
+
+            if let range = trimmedLine.range(of: ":") {
+                let head = String(trimmedLine[..<range.lowerBound]).uppercased()
+                let tail = String(trimmedLine[range.upperBound...]).trimmingCharacters(in: .whitespaces)
+
+                if head == FocusSection.theme.rawValue {
+                    current = .theme
+                    if !tail.isEmpty { assign(.theme, content: tail) }
+                    continue
+                }
+                if head == FocusSection.haiku.rawValue {
+                    current = .haiku
+                    if !tail.isEmpty { assign(.haiku, content: tail) }
+                    continue
+                }
+                if head == FocusSection.do.rawValue {
+                    current = .do
+                    if !tail.isEmpty { assign(.do, content: tail) }
+                    continue
+                }
+                if head == FocusSection.avoid.rawValue {
+                    current = .avoid
+                    if !tail.isEmpty { assign(.avoid, content: tail) }
+                    continue
+                }
+            }
+
+            if let current {
+                assign(current, content: trimmedLine)
+            }
+        }
+
+        if parsed.haikuLines.count == 1, parsed.haikuLines[0].contains(",") {
+            let parts = parsed.haikuLines[0]
+                .split(separator: ",")
+                .map { $0.trimmingCharacters(in: .whitespaces) }
+            if parts.count >= 3 {
+                parsed.haikuLines = Array(parts.prefix(3))
+            }
+        }
+
+        if parsed.haikuLines.count > 3 {
+            parsed.haikuLines = Array(parsed.haikuLines.prefix(3))
+        }
+
+        return parsed
+    }
+
+    @ViewBuilder
+    private func formattedSummaryView(_ text: String, isCompact: Bool) -> some View {
+        if isWaitingPlaceholder {
+            Text("Reaching for the stars" + animatedEllipsis)
+                .font(isCompact ? .caption2 : .body)
+                .foregroundStyle(.secondary)
+                .lineSpacing(isCompact ? 2 : 6)
+        } else {
+            let parsed = parseSummary(text)
+
+            if !parsed.hasAnyContent {
+                Text(text)
+                    .font(isCompact ? .caption2 : .body)
+                    .foregroundStyle(.primary)
+                    .lineSpacing(isCompact ? 2 : 6)
+                    .multilineTextAlignment(.leading)
+                    .fixedSize(horizontal: false, vertical: true)
+            } else {
+                VStack(alignment: .leading, spacing: isCompact ? 6 : 12) {
+                    if !parsed.theme.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("THEME")
+                                .font(isCompact ? .caption.bold() : .headline)
+                                .foregroundStyle(.secondary)
+                            Text(parsed.theme)
+                                .font(isCompact ? .caption2 : .body)
+                                .foregroundStyle(.primary)
+                        }
+                    }
+
+                    if parsed.haikuLines.contains(where: { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }) {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("HAIKU")
+                                .font(isCompact ? .caption.bold() : .headline)
+                                .foregroundStyle(.secondary)
+                            VStack(alignment: .leading, spacing: 2) {
+                                ForEach(parsed.haikuLines.indices, id: \.self) { idx in
+                                    Text(parsed.haikuLines[idx])
+                                        .font(isCompact ? .caption2 : .body)
+                                        .foregroundStyle(.primary)
+                                }
+                            }
+                        }
+                    }
+
+                    if !parsed.doLine.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("DO")
+                                .font(isCompact ? .caption.bold() : .headline)
+                                .foregroundStyle(.secondary)
+                            Text(parsed.doLine)
+                                .font(isCompact ? .caption2 : .body)
+                                .foregroundStyle(.primary)
+                        }
+                    }
+
+                    if !parsed.avoidLine.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("AVOID")
+                                .font(isCompact ? .caption.bold() : .headline)
+                                .foregroundStyle(.secondary)
+                            Text(parsed.avoidLine)
+                                .font(isCompact ? .caption2 : .body)
+                                .foregroundStyle(.primary)
+                        }
+                    }
+                }
+                .lineSpacing(isCompact ? 2 : 6)
+                .multilineTextAlignment(.leading)
+                .fixedSize(horizontal: false, vertical: true)
+            }
+        }
     }
 
     private var iconName: String {
@@ -207,11 +391,7 @@ struct FocusCardView: View {
                     }
                     .padding(.top, 8)
 
-                    Text(visibleBackText)
-                        .font(.title3)
-                        .foregroundStyle(.primary)
-                        .lineLimit(nil)
-                        .fixedSize(horizontal: false, vertical: true)
+                    formattedSummaryView(visibleBackText, isCompact: false)
                         .animation(.easeInOut(duration: 0.20), value: ellipsisPhase)
 
                     Spacer(minLength: 0)
@@ -229,8 +409,7 @@ struct FocusCardView: View {
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
 
-                    Text(visibleBackText)
-                        .font(.caption2)
+                    formattedSummaryView(visibleBackText, isCompact: true)
                         .foregroundStyle(.secondary)
                         .lineLimit(6)
                         .minimumScaleFactor(0.85)
