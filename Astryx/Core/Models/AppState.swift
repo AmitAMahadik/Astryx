@@ -5,8 +5,27 @@
 //  Created by Mahadik, Amit on 12/22/25.
 //
 // AppState.swift
+
 import Foundation
 import Combine
+
+/*
+/// Build-time/runtime configuration loaded from Info.plist.
+/// Add `MCP_BASE_URL` (String) to your app's Info.plist, e.g.
+/// `https://swiss-ephemeris-mcp.<env>.azurecontainerapps.io`
+enum AppConfig {
+    static let mcpBaseURL: URL = {
+        guard
+            let value = Bundle.main.object(forInfoDictionaryKey: "MCP_BASE_URL") as? String,
+            !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+            value != "$(MCP_BASE_URL)",
+            let url = URL(string: value)
+        else {
+            fatalError("❌ MCP_BASE_URL missing or invalid in Info.plist")
+        }
+        return url
+    }()
+}*/
 
 enum Gender: String, CaseIterable, Identifiable, Codable {
     case male = "Male"
@@ -46,9 +65,8 @@ final class AppState: ObservableObject {
     // Centralized AI service (AIProxy-backed) used by non-UI code.
     private let aiService: any AIInsightService = AIInsightServiceFactory.make()
     // MARK: - Deterministic Lunar Sign via Swiss Ephemeris MCP
-
     private let swissMcp = SwissEphemerisMCPClient(
-        baseURL: URL(string: "https://conapp-exastra.yellowrock-7298f3d8.westus.azurecontainerapps.io/")!
+        baseURL: AppConfig.mcpBaseURL
     )
 
     @Published var lunarSignDeterministic: String = "—"

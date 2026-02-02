@@ -82,9 +82,9 @@ public actor SwissEphemerisMCPClient {
     }()
     
     // MARK: Init
-    
+    /// Create an MCP client (pass AppConfig.mcpBaseURL).
     public init(
-        baseURL: URL = URL(string: "https://conapp-exastra.yellowrock-7298f3d8.westus.azurecontainerapps.io")!,
+        baseURL: URL,
         timeoutSeconds: TimeInterval = 30
     ) {
         self.baseURL = baseURL

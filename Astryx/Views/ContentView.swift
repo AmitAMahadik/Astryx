@@ -93,7 +93,7 @@ struct SwissEphemerisMCPTestView: View {
     @State private var output: String = ""
     @State private var errorMessage: String?
 
-    private let client = SwissEphemerisMCPClient()
+    private let client = SwissEphemerisMCPClient(baseURL: AppConfig.mcpBaseURL)
 
     var body: some View {
         Form {
