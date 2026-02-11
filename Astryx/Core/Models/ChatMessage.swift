@@ -1,19 +1,32 @@
-//
-//  ChatMessage.swift
-//  ExAstra
-//
-//  Created by Mahadik, Amit on 12/22/25.
-//
-
-
-// ChatModels.swift
 import Foundation
+import SwiftData
 
-struct ChatMessage: Identifiable, Equatable {
-    enum Role { case user, assistant }
+@Model
+final class ChatMessage {
+    enum Role: String, Codable {
+        case user
+        case assistant
+    }
 
-    let id = UUID()
-    let role: Role
+    @Attribute(.unique) var id: UUID
+    var roleRawValue: String
     var content: String
-    let createdAt: Date = Date()
+    var createdAt: Date
+
+    var role: Role {
+        get { Role(rawValue: roleRawValue) ?? .user }
+        set { roleRawValue = newValue.rawValue }
+    }
+
+    init(
+        id: UUID = UUID(),
+        role: Role,
+        content: String,
+        createdAt: Date = .now
+    ) {
+        self.id = id
+        self.roleRawValue = role.rawValue
+        self.content = content
+        self.createdAt = createdAt
+    }
 }

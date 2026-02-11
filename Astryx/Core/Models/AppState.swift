@@ -36,6 +36,60 @@ enum Gender: String, CaseIterable, Identifiable, Codable {
     var id: String { rawValue }
 }
 
+enum ChineseZodiac {
+    static let animals = [
+        "Rat", "Ox", "Tiger", "Rabbit", "Dragon", "Snake",
+        "Horse", "Goat", "Monkey", "Rooster", "Dog", "Pig"
+    ]
+
+    static let elements = [
+        "Wood", "Wood",
+        "Fire", "Fire",
+        "Earth", "Earth",
+        "Metal", "Metal",
+        "Water", "Water"
+    ]
+
+    static func zodiac(for birthDateUTC: Date) -> (animal: String, element: String) {
+        var greg = Calendar(identifier: .gregorian)
+        greg.timeZone = TimeZone(secondsFromGMT: 0)!
+
+        let birthYear = greg.component(.year, from: birthDateUTC)
+        let cny = chineseNewYearDate(for: birthYear)
+
+        let zodiacYear = birthDateUTC < cny ? birthYear - 1 : birthYear
+
+        let index = (zodiacYear - 4) % 12
+        let safeIndex = (index + 12) % 12
+
+        return (
+            animal: animals[safeIndex],
+            element: elements[safeIndex]
+        )
+    }
+
+    private static func chineseNewYearDate(for year: Int) -> Date {
+        var greg = Calendar(identifier: .gregorian)
+        greg.timeZone = TimeZone(secondsFromGMT: 0)!
+
+        let start = greg.date(from: DateComponents(year: year, month: 1, day: 1))!
+        let end   = greg.date(from: DateComponents(year: year, month: 3, day: 1))!
+
+        let chinese = Calendar(identifier: .chinese)
+
+        var d = start
+        while d < end {
+            let c = chinese.dateComponents([.month, .day, .isLeapMonth], from: d)
+            if c.month == 1, c.day == 1, c.isLeapMonth != true {
+                return d
+            }
+            d = greg.date(byAdding: .day, value: 1, to: d)!
+        }
+
+        fatalError("Failed to compute Chinese New Year")
+    }
+}
+
 enum FocusArea: String, CaseIterable, Identifiable, Codable {
     case purpose = "Purpose"
     case career = "Career"
@@ -387,7 +441,7 @@ extension Notification.Name {
     static let openAIKeyDidChange = Notification.Name("openAIKeyDidChange")
 }
 
-// MARK: - AI Astrology lookups (Solar, Lunar, Chinese)
+// MARK: - AI Astrology lookups (Solar, Vedic Moon) + Deterministic Chinese Zodiac
 
 struct VedicMoonSignAIResult: Codable, Equatable {
     /// Sidereal Moon sign (Rāśi), e.g., "Sagittarius".
@@ -401,22 +455,62 @@ struct VedicMoonSignAIResult: Codable, Equatable {
     let pada: Int?
 }
 
-struct AstrologySignsAIResult: Decodable, Equatable {
+struct AstrologySignsAIModelResult: Decodable, Equatable {
     let solarSign: String
     let vedicMoonSign: VedicMoonSignAIResult?
-    let chineseSign: String
 
     enum CodingKeys: String, CodingKey {
         case solarSign
         case vedicMoonSign
-        case chineseSign
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        solarSign = try container.decode(String.self, forKey: .solarSign)
+
+        // Be tolerant: sometimes the model returns `vedicMoonSign` as an object, sometimes as a string,
+        // and sometimes omits it. Do not fail the whole decode for that.
+        if let object = try? container.decodeIfPresent(VedicMoonSignAIResult.self, forKey: .vedicMoonSign) {
+            vedicMoonSign = object
+        } else if let string = try? container.decodeIfPresent(String.self, forKey: .vedicMoonSign) {
+            vedicMoonSign = VedicMoonSignAIResult(rashi: string, nakshatra: nil, pada: nil)
+        } else {
+            vedicMoonSign = nil
+        }
+    }
+}
+
+struct AstrologySignsAIResult: Decodable, Equatable {
+    let solarSign: String
+    let vedicMoonSign: VedicMoonSignAIResult?
+    let chineseAnimal: String
+    let chineseElement: String
+
+    init(
+        solarSign: String,
+        vedicMoonSign: VedicMoonSignAIResult?,
+        chineseAnimal: String,
+        chineseElement: String
+    ) {
+        self.solarSign = solarSign
+        self.vedicMoonSign = vedicMoonSign
+        self.chineseAnimal = chineseAnimal
+        self.chineseElement = chineseElement
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case solarSign
+        case vedicMoonSign
+        case chineseAnimal
+        case chineseElement
     }
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
 
         solarSign = try container.decode(String.self, forKey: .solarSign)
-        chineseSign = try container.decode(String.self, forKey: .chineseSign)
+        chineseAnimal = try container.decode(String.self, forKey: .chineseAnimal)
+        chineseElement = try container.decode(String.self, forKey: .chineseElement)
 
         // Be tolerant: sometimes the model returns `vedicMoonSign` as an object, sometimes as a string,
         // and sometimes omits it. Do not fail the whole decode for that.
@@ -452,11 +546,24 @@ struct AstrologySignsAIResult: Decodable, Equatable {
             return "—"
         }
     }
+
+    /// Convenience string for UI display and storage.
+    var chineseZodiacDisplay: String {
+        let element = chineseElement.trimmingCharacters(in: .whitespacesAndNewlines)
+        let animal = chineseAnimal.trimmingCharacters(in: .whitespacesAndNewlines)
+        switch (element.isEmpty, animal.isEmpty) {
+        case (false, false): return "\(element) \(animal)"
+        case (true, false): return animal
+        case (false, true): return element
+        default: return "—"
+        }
+    }
 }
 
 extension AppState {
-    /// Uses the OpenAI model (via AIProxy) to infer Solar (Western Sun), Lunar (Moon sign, tropical), and Chinese zodiac.
-    /// - Important: This is model-derived. Deterministic Moon-sign requires an ephemeris library/service.
+    /// Uses the OpenAI model (via AIProxy) to infer Solar (Western Sun) and Vedic Moon sign.
+    /// Chinese zodiac is computed deterministically in code.
+    /// - Important: This is model-derived for solar/vedic moon; Chinese zodiac is always deterministic.
     func lookupAstrologySignsViaSwiftOpenAI() async throws -> AstrologySignsAIResult {
         guard isAIAvailable else {
             throw NSError(
@@ -473,8 +580,8 @@ extension AppState {
         (2) Vedic Moon sign (Rāśi) using:
         - Sidereal zodiac
         - Lahiri (Chitrapaksha) Ayanāṁśa
-        - Drik Panchang–style calculations, and
-        (3) Chinese zodiac animal.
+        - Drik Panchang–style calculations.
+
         Rules:
         - Use geocentric planetary positions.
         - Convert local birth time correctly to UTC.
@@ -483,7 +590,7 @@ extension AppState {
         - Determine the Moon’s sidereal longitude and map it to the correct Rāśi.
         - Also determine the Nakshatra and Pada.
         - Do NOT guess. If data is insufficient, state so explicitly.
-        - Output MUST be valid JSON only with keys: solarSign, vedicMoonSign, chineseSign.
+        - Output MUST be valid JSON only with keys: solarSign, vedicMoonSign.
         - Do not include markdown, backticks, extra keys, or commentary.
         """
 
@@ -542,15 +649,37 @@ extension AppState {
         }
 
         do {
-            return try JSONDecoder().decode(AstrologySignsAIResult.self, from: data)
+            let modelResult = try JSONDecoder().decode(AstrologySignsAIModelResult.self, from: data)
+
+            // Deterministic Chinese zodiac (element + animal) based on UTC birth moment.
+            let birthUTCDate = try birthMomentUTC()
+            let zodiac = ChineseZodiac.zodiac(for: birthUTCDate)
+
+            return AstrologySignsAIResult(
+                solarSign: modelResult.solarSign,
+                vedicMoonSign: modelResult.vedicMoonSign,
+                chineseAnimal: zodiac.animal,
+                chineseElement: zodiac.element
+            )
         } catch {
             if let extracted = Self.extractFirstJSONObject(from: content),
                let extractedData = extracted.data(using: .utf8) {
-                return try JSONDecoder().decode(AstrologySignsAIResult.self, from: extractedData)
+
+                let modelResult = try JSONDecoder().decode(AstrologySignsAIModelResult.self, from: extractedData)
+
+                let birthUTCDate = try birthMomentUTC()
+                let zodiac = ChineseZodiac.zodiac(for: birthUTCDate)
+
+                return AstrologySignsAIResult(
+                    solarSign: modelResult.solarSign,
+                    vedicMoonSign: modelResult.vedicMoonSign,
+                    chineseAnimal: zodiac.animal,
+                    chineseElement: zodiac.element
+                )
             }
 
             let preview = String(content.prefix(800))
-            print("[AppState] Failed to decode AstrologySignsAIResult. Error: \(error)\nRaw response preview (first 800 chars):\n\(preview)")
+            print("[AppState] Failed to decode AstrologySignsAIModelResult. Error: \(error)\nRaw response preview (first 800 chars):\n\(preview)")
             throw NSError(
                 domain: "Astryx",
                 code: 3,

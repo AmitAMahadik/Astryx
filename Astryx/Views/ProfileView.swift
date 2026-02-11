@@ -7,9 +7,19 @@
 
 import SwiftUI
 import MapKit
+import SwiftData
 
 struct ProfileView: View {
-    @EnvironmentObject private var state: AppState
+    @Environment(\.modelContext) private var modelContext
+    @Query(sort: \Profile.updatedAt, order: .reverse) private var profiles: [Profile]
+
+    @AppStorage("selectedProfileID") private var selectedProfileID: String = ""
+
+    // Keep AppState as the view-model/service hub for computation + API calls.
+    @StateObject private var state = AppState()
+
+    // The active SwiftData profile record we persist into.
+    @State private var activeProfile: Profile? = nil
 
     @State private var isLookingUpSigns: Bool = false
     @State private var signsResult: AstrologySignsAIResult? = nil
@@ -32,18 +42,25 @@ struct ProfileView: View {
         state.birthLatitude != nil && state.birthLongitude != nil && state.birthTimeZoneIdentifier != nil
     }
 
+    private var selectedProfile: Profile? {
+        profiles.first { $0.id.uuidString == selectedProfileID }
+    }
+
+    private var currentProfileTitle: String {
+        let name = selectedProfile?.name.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return name.isEmpty ? "Profile" : name
+    }
+
     var body: some View {
         Form {
             Section("Profile") {
                 HStack {
                     Text("Name")
-                       // .foregroundStyle(.secondary)
-
                     Spacer()
-
                     TextField("", text: $state.name)
                         .multilineTextAlignment(.trailing)
                         .textContentType(.name)
+                        .submitLabel(.done)
                 }
 
                 Picker("Gender", selection: $state.gender) {
@@ -52,22 +69,47 @@ struct ProfileView: View {
                     }
                 }
 
-                DatePicker("Date of Birth", selection: $state.dob, displayedComponents: .date)
-                    .onChange(of: state.dob) { _, _ in
-                        invalidateValidatedPlaceAndDerivedResults()
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack {
+                        Text("Birth Date")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+
+                        Spacer()
+
+                        Text("Birth Time")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
                     }
 
-                DatePicker(
-                    "Time of Birth",
-                    selection: Binding(
-                        get: { state.timeOfBirthPickerDate },
-                        set: { state.timeOfBirthPickerDate = $0 }
-                    ),
-                    displayedComponents: .hourAndMinute
-                )
-                .environment(\.timeZone, TimeZone(secondsFromGMT: 0)!)
-                .onChange(of: state.timeOfBirthPickerDate) { _, _ in
-                    invalidateValidatedPlaceAndDerivedResults()
+                    HStack {
+                        DatePicker(
+                            "Date of Birth",
+                            selection: $state.dob,
+                            displayedComponents: .date
+                        )
+                        .labelsHidden()
+                        .onChange(of: state.dob) { _, _ in
+                            invalidateValidatedPlaceAndDerivedResults()
+                        }
+
+                        Spacer()
+
+                        DatePicker(
+                            "Time of Birth",
+                            selection: Binding(
+                                get: { state.timeOfBirthPickerDate },
+                                set: { state.timeOfBirthPickerDate = $0 }
+                            ),
+                            displayedComponents: .hourAndMinute
+                        )
+                        .labelsHidden()
+                        .environment(\.timeZone, TimeZone(secondsFromGMT: 0)!)
+                        .onChange(of: state.timeOfBirthPickerDate) { _, _ in
+                            invalidateValidatedPlaceAndDerivedResults()
+                        }
+                    }
+                    .accessibilityElement(children: .contain)
                 }
 
                 HStack(alignment: .center, spacing: 10) {
@@ -85,9 +127,18 @@ struct ProfileView: View {
                             .accessibilityLabel("Place of birth validated")
                     }
 
-                    Button("Validate") {
+                    Button {
                         validatePlace()
+                    } label: {
+                        if isValidatingPlace {
+                            ProgressView()
+                                .controlSize(.small)
+                        } else {
+                            Text(isPlaceValid ? "Revalidate" : "Validate")
+                        }
                     }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
                     .disabled(isValidatingPlace)
                 }
 
@@ -115,95 +166,117 @@ struct ProfileView: View {
                         .foregroundStyle(.secondary)
                 }
             }
-            Section("Signs") {
-                LabeledContent {
-                    Text(displayedMoonSign)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.85)
-                } label: {
-                    Label("Lunar (Ephemeris)", systemImage: "moon.stars.fill")
-                        .symbolRenderingMode(.hierarchical)
-                }
+            Section {
+                VStack(spacing: 12) {
+                    SignCard(
+                        title: "Lunar (Ephemeris)",
+                        systemImage: "moon.stars.fill",
+                        value: displayedMoonSign
+                    )
 
-                LabeledContent {
-                    Text(displayedSunSign)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.85)
-                } label: {
-                    Label("Sun Sign", systemImage: "sun.max.fill")
-                        .symbolRenderingMode(.hierarchical)
-                }
+                    SignCard(
+                        title: "Sun Sign",
+                        systemImage: "sun.max.fill",
+                        value: displayedSunSign
+                    )
 
-                LabeledContent {
-                    Text(displayedChineseSign)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.85)
-                } label: {
-                    Label("Chinese Zodiac", systemImage: "sparkles")
-                        .symbolRenderingMode(.hierarchical)
-                }
+                    SignCard(
+                        title: "Chinese Zodiac",
+                        systemImage: "sparkles",
+                        value: displayedChineseSign
+                    )
 
-                if isLookingUpSigns {
-                    HStack(spacing: 10) {
-                        ProgressView()
-                        Text("Calculating signs…")
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
+                    if isLookingUpSigns {
+                        StatusCard(
+                            systemImage: "hourglass",
+                            text: "Calculating signs…",
+                            showsProgress: true
+                        )
+                    } else if !isPlaceValid {
+                        StatusCard(
+                            systemImage: "location.slash",
+                            text: "Validate your place of birth to calculate your signs."
+                        )
                     }
-                } else if !isPlaceValid {
-                    Text("Validate your place of birth to calculate your signs.")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                }
 
-                if let unifiedSignsError, !unifiedSignsError.isEmpty {
-                    Text(unifiedSignsError)
-                        .font(.footnote)
-                        .foregroundStyle(.red)
+                    if let unifiedSignsError, !unifiedSignsError.isEmpty {
+                        StatusCard(
+                            systemImage: "exclamationmark.triangle.fill",
+                            text: unifiedSignsError
+                        )
+                    }
                 }
+                .padding(.vertical, 4)
+            } header: {
+                Text("Signs")
+            }
+            .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
+        }
+        .onChange(of: selectedProfileID) { _, newValue in
+            guard !newValue.isEmpty else { return }
+            if let match = profiles.first(where: { $0.id.uuidString == newValue }) {
+                activeProfile = match
+                syncStateFromProfile(match)
+
+                // Refresh displayed values immediately
+                displayedMoonSign = (state.lunarSignDeterministic.isEmpty ? "—" : state.lunarSignDeterministic)
+                displayedSunSign = state.solarSign.isEmpty ? "—" : state.solarSign
+                displayedChineseSign = state.chineseSign.isEmpty ? "—" : state.chineseSign
+                unifiedSignsError = nil
             }
         }
-        .scrollDisabled(true)
-        .toolbar(.hidden, for: .navigationBar)
-        .safeAreaInset(edge: .bottom) {
-            Button(role: .destructive) {
-                showResetConfirm = true
-            } label: {
-                Text("Reset Profile")
-                    .font(.headline)
-                    .foregroundStyle(.white)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 12)
-                    .background(Color.red)
-                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                    .padding(.horizontal)
-                    .padding(.bottom, 8)
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Menu {
+                    Section("Select Profile") {
+                        Picker("Profile", selection: $selectedProfileID) {
+                            ForEach(profiles) { profile in
+                                Text(profile.name.isEmpty ? "Unnamed Profile" : profile.name)
+                                    .tag(profile.id.uuidString)
+                            }
+                        }
+                    }
+
+                    Divider()
+
+                    Button {
+                        createNewProfile()
+                    } label: {
+                        Label("Add Profile", systemImage: "plus")
+                    }
+
+                    Button(role: .destructive) {
+                        showResetConfirm = true
+                    } label: {
+                        Label("Delete Profile", systemImage: "trash")
+                    }
+                    .disabled(profiles.count <= 1)
+                } label: {
+                    Label(currentProfileTitle, systemImage: "person.crop.circle")
+                }
             }
-            .buttonStyle(.plain)
         }
         .confirmationDialog(
-            "Reset Profile?",
+            "Delete Profile?",
             isPresented: $showResetConfirm,
             titleVisibility: .visible
         ) {
-            Button("Reset Profile", role: .destructive) {
-                resetProfile()
+            Button("Delete", role: .destructive) {
+                deleteActiveProfile()
             }
             Button("Cancel", role: .cancel) { }
         } message: {
-            Text("This will clear your saved profile details and validated location.")
+            Text("This will permanently delete the current profile.")
         }
         .onAppear {
+            ensureActiveProfileLoaded()
             if displayedMoonSign == "—" {
                 let existingMoon = state.lunarSignDeterministic
                 if !existingMoon.isEmpty, existingMoon != "—" { displayedMoonSign = existingMoon }
             }
             if displayedSunSign == "—", let signsResult {
                 displayedSunSign = signsResult.solarSign
-                displayedChineseSign = signsResult.chineseSign
+                displayedChineseSign = signsResult.chineseZodiacDisplay
             }
             // Auto-populate all three signs on app start if we already have a validated place
             // (persisted coordinates + timezone) and nothing is displayed yet.
@@ -328,21 +401,6 @@ struct ProfileView: View {
         }
     }
 
-    private func resetProfile() {
-        state.resetProfile()
-
-        isLookingUpSigns = false
-        signsResult = nil
-        signsError = nil
-        isValidatingPlace = false
-        validatedMapItem = nil
-        placeValidationError = nil
-
-        displayedMoonSign = "—"
-        displayedSunSign = "—"
-        displayedChineseSign = "—"
-        unifiedSignsError = nil
-    }
 
     private func startUnifiedSignsLookup() {
         guard isPlaceValid else { return }
@@ -366,7 +424,7 @@ struct ProfileView: View {
                 await MainActor.run {
                     displayedMoonSign = moon.sign
                     displayedSunSign = aiResult.solarSign
-                    displayedChineseSign = aiResult.chineseSign
+                    displayedChineseSign = aiResult.chineseZodiacDisplay
 
                     // View-local
                     signsResult = aiResult
@@ -375,10 +433,10 @@ struct ProfileView: View {
                     state.lunarSignDeterministic = moon.sign
                     state.moonLongitudeDeterministic = moon.longitude
                     state.solarSign = aiResult.solarSign
-                    state.chineseSign = aiResult.chineseSign
+                    state.chineseSign = aiResult.chineseZodiacDisplay
 
-                    // Persist so it survives app restarts
-                    state.saveProfile()
+                    // Persist so it survives app restarts (SwiftData)
+                    persistActiveProfile()
 
                     isLookingUpSigns = false
                 }
@@ -391,13 +449,186 @@ struct ProfileView: View {
         }
     }
 
+    // MARK: - SwiftData wiring
+
+    private func ensureActiveProfileLoaded() {
+        // Try restoring previously selected profile
+        if let selected = selectedProfile {
+            activeProfile = selected
+            syncStateFromProfile(selected)
+            return
+        }
+
+        // Fallback to most recently updated profile
+        if let existing = profiles.first {
+            activeProfile = existing
+            selectedProfileID = existing.id.uuidString
+            syncStateFromProfile(existing)
+            return
+        }
+
+        // No profiles yet → create default
+        let created = Profile(name: state.name.isEmpty ? "" : state.name)
+        modelContext.insert(created)
+        activeProfile = created
+        selectedProfileID = created.id.uuidString
+        persistActiveProfile()
+    }
+
+    private func persistActiveProfile() {
+        guard let activeProfile else { return }
+        syncProfileFromState(activeProfile)
+        do {
+            try modelContext.save()
+        } catch {
+            // Non-fatal: keep UI responsive; surface error in the view if you want.
+            print("SwiftData save failed:", error)
+        }
+    }
+
+    private func createNewProfile() {
+        let newProfile = Profile(name: "")
+        modelContext.insert(newProfile)
+        activeProfile = newProfile
+        selectedProfileID = newProfile.id.uuidString
+        syncStateFromProfile(newProfile)
+        try? modelContext.save()
+    }
+
+    private func deleteActiveProfile() {
+        guard let activeProfile else { return }
+        modelContext.delete(activeProfile)
+        try? modelContext.save()
+
+        // Select a fallback profile
+        if let fallback = profiles.first(where: { $0.id != activeProfile.id }) {
+            self.activeProfile = fallback
+            self.selectedProfileID = fallback.id.uuidString
+            syncStateFromProfile(fallback)
+        } else {
+            self.activeProfile = nil
+            self.selectedProfileID = ""
+        }
+    }
+
+    private func syncStateFromProfile(_ profile: Profile) {
+        // Core identity
+        state.name = profile.name
+
+        // Demographics
+        if let g = Gender(rawValue: profile.genderRawValue) {
+            state.gender = g
+        }
+
+        // Birth date/time
+        state.dob = profile.dob
+        state.tobHour = profile.tobHour
+        state.tobMinute = profile.tobMinute
+        state.tobSecond = profile.tobSecond
+
+        // Location
+        state.placeOfBirth = profile.placeOfBirth
+        state.birthLatitude = profile.birthLatitude
+        state.birthLongitude = profile.birthLongitude
+        state.birthTimeZoneIdentifier = profile.birthTimeZoneIdentifier
+
+        // Derived signs
+        state.lunarSignDeterministic = profile.lunarSignDeterministic
+        state.moonLongitudeDeterministic = profile.moonLongitudeDeterministic
+        state.solarSign = profile.solarSign
+        state.chineseSign = profile.chineseSign
+    }
+
+    private func syncProfileFromState(_ profile: Profile) {
+        profile.name = state.name
+
+        profile.genderRawValue = state.gender.rawValue
+
+        profile.dob = state.dob
+        profile.tobHour = state.tobHour
+        profile.tobMinute = state.tobMinute
+        profile.tobSecond = state.tobSecond
+
+        profile.placeOfBirth = state.placeOfBirth
+        profile.birthLatitude = state.birthLatitude
+        profile.birthLongitude = state.birthLongitude
+        profile.birthTimeZoneIdentifier = state.birthTimeZoneIdentifier
+
+        profile.lunarSignDeterministic = state.lunarSignDeterministic
+        profile.moonLongitudeDeterministic = state.moonLongitudeDeterministic
+        profile.solarSign = state.solarSign
+        profile.chineseSign = state.chineseSign
+
+        profile.updatedAt = .now
+        selectedProfileID = profile.id.uuidString
+    }
+
+    // MARK: - UI Cards
+
+    private struct SignCard: View {
+        let title: String
+        let systemImage: String
+        let value: String
+
+        var body: some View {
+            HStack(spacing: 12) {
+                Image(systemName: systemImage)
+                    .symbolRenderingMode(.hierarchical)
+                    .font(.title3)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title)
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+
+                    Text(value)
+                        .font(.headline)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.85)
+                }
+
+                Spacer(minLength: 0)
+            }
+            .padding(12)
+            .background(.thinMaterial)
+            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        }
+    }
+
+    private struct StatusCard: View {
+        let systemImage: String
+        let text: String
+        var showsProgress: Bool = false
+
+        var body: some View {
+            HStack(spacing: 10) {
+                Image(systemName: systemImage)
+                    .symbolRenderingMode(.hierarchical)
+
+                Text(text)
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+
+                Spacer(minLength: 0)
+
+                if showsProgress {
+                    ProgressView()
+                        .controlSize(.small)
+                }
+            }
+            .padding(12)
+            .background(.thinMaterial)
+            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        }
+    }
+
     // (No runtime API key helpers — app relies on build-time Info.plist configuration.)
 }
 
 #Preview("ProfileView") {
     NavigationStack {
         ProfileView()
-            .environmentObject(ProfileView_Previews.makePreviewState())
+            .modelContainer(for: [Item.self, Profile.self])
     }
 }
 
