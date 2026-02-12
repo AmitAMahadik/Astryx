@@ -15,8 +15,8 @@ struct ProfileView: View {
 
     @AppStorage("selectedProfileID") private var selectedProfileID: String = ""
 
-    // Keep AppState as the view-model/service hub for computation + API calls.
-    @StateObject private var state = AppState()
+    // Use the shared app-level state so Profile/Focus/Chat stay in sync.
+    @EnvironmentObject private var state: AppState
 
     // The active SwiftData profile record we persist into.
     @State private var activeProfile: Profile? = nil
@@ -629,6 +629,7 @@ struct ProfileView: View {
     NavigationStack {
         ProfileView()
             .modelContainer(for: [Item.self, Profile.self])
+            .environmentObject(ProfileView_Previews.makePreviewState())
     }
 }
 

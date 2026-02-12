@@ -59,12 +59,12 @@ enum ChineseZodiac {
 
         let zodiacYear = birthDateUTC < cny ? birthYear - 1 : birthYear
 
-        let index = (zodiacYear - 4) % 12
-        let safeIndex = (index + 12) % 12
+        let animalIndex = ((zodiacYear - 4) % 12 + 12) % 12
+        let elementIndex = ((zodiacYear - 4) % 10 + 10) % 10
 
         return (
-            animal: animals[safeIndex],
-            element: elements[safeIndex]
+            animal: animals[animalIndex],
+            element: elements[elementIndex]
         )
     }
 
