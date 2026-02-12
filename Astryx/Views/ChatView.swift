@@ -12,20 +12,27 @@ import SwiftUI
 struct ChatView: View {
     @Environment(\.aiInsightService) private var aiService
     @EnvironmentObject private var state: AppState
+    @AppStorage("selectedProfileID") private var selectedProfileID: String = ""
 
     @StateObject private var viewModel = ChatViewModel()
+    @State private var showClearChatConfirmation = false
 
     var body: some View {
         VStack(spacing: 0) {
             ScrollViewReader { proxy in
                 ScrollView {
                     LazyVStack(spacing: 12) {
+                        if viewModel.messages.isEmpty {
+                            emptyStateCard
+                        }
+
                         ForEach(viewModel.messages) { message in
                             messageRow(message)
                                 .id(message.id)
                         }
                     }
-                    .padding()
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 12)
                 }
                 .background(Color.clear)
                 .onChange(of: viewModel.messages.count) { _, _ in
@@ -40,19 +47,26 @@ struct ChatView: View {
 
             if let error = viewModel.errorMessage {
                 Text(error)
-                    .foregroundColor(.red)
+                    .foregroundStyle(.red)
                     .font(.footnote)
-                    .padding([.horizontal, .bottom], 8)
+                    .padding(.horizontal, 16)
+                    .padding(.top, 8)
             }
 
             HStack(spacing: 8) {
                 TextField("Ask a question...", text: $viewModel.input)
-                    .textFieldStyle(.roundedBorder)
+                    .textFieldStyle(.plain)
                     .disabled(viewModel.isStreaming)
                     .onSubmit {
-                        applyContextToViewModel()
+                        syncContextToViewModel()
                         viewModel.sendPrompt()
                     }
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 10)
+                    .background(
+                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                            .fill(Color.secondary.opacity(0.12))
+                    )
 
                 if viewModel.isStreaming {
                     ProgressView()
@@ -60,23 +74,70 @@ struct ChatView: View {
                 }
 
                 Button(action: {
-                    applyContextToViewModel()
+                    syncContextToViewModel()
                     viewModel.sendPrompt()
                 }) {
                     Image(systemName: "paperplane.fill")
                         .rotationEffect(.degrees(45))
-                        .padding(8)
+                        .padding(10)
                 }
                 .disabled(viewModel.input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || viewModel.isStreaming)
             }
-            .padding()
-            .background(.thinMaterial)
+            .padding(12)
+            .background(
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .fill(.thinMaterial)
+            )
+            .padding(.horizontal, 16)
+            .padding(.top, 10)
+            .padding(.bottom, 12)
         }
-        .navigationTitle("Chat")
+        .navigationTitle("Astryx Chat")
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button(role: .destructive) {
+                    showClearChatConfirmation = true
+                } label: {
+                    Label("Clear Chat", systemImage: "trash")
+                }
+            }
+        }
+        .confirmationDialog(
+            "Clear chat history?",
+            isPresented: $showClearChatConfirmation,
+            titleVisibility: .visible
+        ) {
+            Button("Clear Chat", role: .destructive) {
+                viewModel.clearChat()
+                syncContextToViewModel(seedWelcomeIfNeeded: true)
+            }
+            Button("Cancel", role: .cancel) { }
+        } message: {
+            Text("This will remove all messages for the selected profile.")
+        }
         .task {
             viewModel.setService(aiService)
-            applyContextToViewModel()
+            viewModel.activateProfile(id: selectedProfileID)
+            syncContextToViewModel(seedWelcomeIfNeeded: true)
         }
+        .onChange(of: selectedProfileID) { _, newProfileID in
+            viewModel.activateProfile(id: newProfileID)
+            syncContextToViewModel(seedWelcomeIfNeeded: true)
+        }
+    }
+
+    private var emptyStateCard: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "sparkles")
+                .symbolRenderingMode(.hierarchical)
+            Text("Your previous conversation for this profile appears here. Ask a question to begin.")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+            Spacer(minLength: 0)
+        }
+        .padding(12)
+        .background(.thinMaterial)
+        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
     }
 
     @ViewBuilder
@@ -90,7 +151,7 @@ struct ChatView: View {
                     .foregroundColor(.primary)
                     .padding(12)
                     .background(bubbleColor(for: message.role))
-                    .cornerRadius(12)
+                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
 
                 Text(message.date, style: .time)
                     .font(.caption2)
@@ -106,7 +167,7 @@ struct ChatView: View {
     private func bubbleColor(for role: ChatViewModel.Role) -> Color {
         switch role {
         case .user:
-            return Color.accentColor.opacity(0.15)
+            return Color.accentColor.opacity(0.18)
         case .assistant:
             return Color.secondary.opacity(0.12)
         case .system:
@@ -114,14 +175,25 @@ struct ChatView: View {
         }
     }
 
-    private func applyContextToViewModel() {
-        viewModel.setProfileContext(makeProfileContext())
+    private func syncContextToViewModel(seedWelcomeIfNeeded: Bool = false) {
+        let profileContext = makeProfileContext()
+        viewModel.setProfileContext(profileContext)
         viewModel.setAstrologyContext(
             focusHint: "",
             lunarSign: state.lunarSignDeterministic,
             solarSign: state.solarSign,
             chineseSign: state.chineseSign
         )
+
+        if seedWelcomeIfNeeded {
+            viewModel.seedIfNeeded(
+                profile: profileContext,
+                focusHint: "",
+                lunarSign: state.lunarSignDeterministic,
+                solarSign: state.solarSign,
+                chineseSign: state.chineseSign
+            )
+        }
     }
 
     private func makeProfileContext() -> String {

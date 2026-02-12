@@ -10,6 +10,8 @@ import MapKit
 import SwiftData
 
 struct ProfileView: View {
+    private static let maxProfiles = 5
+
     @Environment(\.modelContext) private var modelContext
     @Query(sort: \Profile.updatedAt, order: .reverse) private var profiles: [Profile]
 
@@ -28,6 +30,8 @@ struct ProfileView: View {
     @State private var isValidatingPlace: Bool = false
     @State private var validatedMapItem: MKMapItem? = nil
     @State private var placeValidationError: String? = nil
+    @State private var hasValidatedPlace: Bool = false
+    @State private var derivedInvalidationSuppressionCount: Int = 0
 
     @State private var showResetConfirm = false
 
@@ -41,6 +45,10 @@ struct ProfileView: View {
         // Treat place as valid if we have persisted validated coordinates + timezone.
         state.birthLatitude != nil && state.birthLongitude != nil && state.birthTimeZoneIdentifier != nil
     }
+    
+    private var isDerivedInvalidationSuppressed: Bool {
+        derivedInvalidationSuppressionCount > 0
+    }
 
     private var selectedProfile: Profile? {
         profiles.first { $0.id.uuidString == selectedProfileID }
@@ -49,6 +57,10 @@ struct ProfileView: View {
     private var currentProfileTitle: String {
         let name = selectedProfile?.name.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         return name.isEmpty ? "Profile" : name
+    }
+    
+    private var canAddProfile: Bool {
+        profiles.count < Self.maxProfiles
     }
 
     var body: some View {
@@ -90,6 +102,7 @@ struct ProfileView: View {
                         )
                         .labelsHidden()
                         .onChange(of: state.dob) { _, _ in
+                            guard !isDerivedInvalidationSuppressed else { return }
                             invalidateValidatedPlaceAndDerivedResults()
                         }
 
@@ -106,6 +119,7 @@ struct ProfileView: View {
                         .labelsHidden()
                         .environment(\.timeZone, TimeZone(secondsFromGMT: 0)!)
                         .onChange(of: state.timeOfBirthPickerDate) { _, _ in
+                            guard !isDerivedInvalidationSuppressed else { return }
                             invalidateValidatedPlaceAndDerivedResults()
                         }
                     }
@@ -116,6 +130,7 @@ struct ProfileView: View {
                     TextField("Place of Birth (City, Country)", text: $state.placeOfBirth)
                         .textContentType(.addressCity)
                         .onChange(of: state.placeOfBirth) { _, _ in
+                            guard !isDerivedInvalidationSuppressed else { return }
                             invalidateValidatedPlaceAndDerivedResults()
                         }
 
@@ -217,22 +232,27 @@ struct ProfileView: View {
             if let match = profiles.first(where: { $0.id.uuidString == newValue }) {
                 activeProfile = match
                 syncStateFromProfile(match)
-
-                // Refresh displayed values immediately
-                displayedMoonSign = (state.lunarSignDeterministic.isEmpty ? "—" : state.lunarSignDeterministic)
-                displayedSunSign = state.solarSign.isEmpty ? "—" : state.solarSign
-                displayedChineseSign = state.chineseSign.isEmpty ? "—" : state.chineseSign
                 unifiedSignsError = nil
+                hasValidatedPlace = isPlaceValid
+                syncDisplayedSignsFromState()
+                autoFetchSignsIfNeeded()
             }
         }
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Menu {
                     Section("Select Profile") {
-                        Picker("Profile", selection: $selectedProfileID) {
-                            ForEach(profiles) { profile in
-                                Text(profile.name.isEmpty ? "Unnamed Profile" : profile.name)
-                                    .tag(profile.id.uuidString)
+                        ForEach(profiles) { profile in
+                            let profileID = profile.id.uuidString
+                            let profileName = profile.name.isEmpty ? "Unnamed Profile" : profile.name
+                            Button {
+                                selectedProfileID = profileID
+                            } label: {
+                                if selectedProfileID == profileID {
+                                    Label(profileName, systemImage: "checkmark")
+                                } else {
+                                    Text(profileName)
+                                }
                             }
                         }
                     }
@@ -244,6 +264,7 @@ struct ProfileView: View {
                     } label: {
                         Label("Add Profile", systemImage: "plus")
                     }
+                    .disabled(!canAddProfile)
 
                     Button(role: .destructive) {
                         showResetConfirm = true
@@ -270,23 +291,9 @@ struct ProfileView: View {
         }
         .onAppear {
             ensureActiveProfileLoaded()
-            if displayedMoonSign == "—" {
-                let existingMoon = state.lunarSignDeterministic
-                if !existingMoon.isEmpty, existingMoon != "—" { displayedMoonSign = existingMoon }
-            }
-            if displayedSunSign == "—", let signsResult {
-                displayedSunSign = signsResult.solarSign
-                displayedChineseSign = signsResult.chineseZodiacDisplay
-            }
-            // Auto-populate all three signs on app start if we already have a validated place
-            // (persisted coordinates + timezone) and nothing is displayed yet.
-            if isPlaceValid,
-               displayedMoonSign == "—",
-               displayedSunSign == "—",
-               displayedChineseSign == "—",
-               !isLookingUpSigns {
-                startUnifiedSignsLookup()
-            }
+            hasValidatedPlace = isPlaceValid
+            syncDisplayedSignsFromState()
+            autoFetchSignsIfNeeded()
 
             // API key is provided via Info.plist only; runtime edits are not supported in the Profile screen.
         }
@@ -309,6 +316,7 @@ struct ProfileView: View {
     }
 
     private func invalidateValidatedPlaceAndDerivedResults() {
+        hasValidatedPlace = false
         validatedMapItem = nil
         placeValidationError = nil
 
@@ -378,15 +386,18 @@ struct ProfileView: View {
                             }
                         }()
 
-                        if let city, !city.isEmpty, let country, !country.isEmpty {
-                            state.placeOfBirth = "\(city), \(country)"
-                        } else if let city, !city.isEmpty {
-                            state.placeOfBirth = city
-                        } else {
-                            state.placeOfBirth = query
+                        withSuppressedDerivedInvalidation {
+                            if let city, !city.isEmpty, let country, !country.isEmpty {
+                                state.placeOfBirth = "\(city), \(country)"
+                            } else if let city, !city.isEmpty {
+                                state.placeOfBirth = city
+                            } else {
+                                state.placeOfBirth = query
+                            }
                         }
 
-                        startUnifiedSignsLookup()
+                        hasValidatedPlace = true
+                        autoFetchSignsIfNeeded()
                     } else {
                         placeValidationError = "No matching location found. Try a more specific format like ‘City, State/Region, Country’."
                         isValidatingPlace = false
@@ -398,6 +409,50 @@ struct ProfileView: View {
                     isValidatingPlace = false
                 }
             }
+        }
+    }
+
+    private var hasPreviouslyFetchedSigns: Bool {
+        func hasValue(_ value: String) -> Bool {
+            let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+            return !trimmed.isEmpty && trimmed != "—"
+        }
+        return hasValue(state.lunarSignDeterministic)
+            && hasValue(state.solarSign)
+            && hasValue(state.chineseSign)
+    }
+
+    private func syncDisplayedSignsFromState() {
+        func displayValue(from value: String) -> String {
+            let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+            return trimmed.isEmpty ? "—" : trimmed
+        }
+
+        displayedMoonSign = displayValue(from: state.lunarSignDeterministic)
+        displayedSunSign = displayValue(from: state.solarSign)
+        displayedChineseSign = displayValue(from: state.chineseSign)
+    }
+
+    private func autoFetchSignsIfNeeded() {
+        hasValidatedPlace = isPlaceValid
+        guard hasValidatedPlace, !isLookingUpSigns else { return }
+
+        if hasPreviouslyFetchedSigns {
+            // Signs already exist for this validated profile: show persisted values as-is.
+            syncDisplayedSignsFromState()
+            return
+        }
+
+        startUnifiedSignsLookup()
+    }
+
+    private func withSuppressedDerivedInvalidation(_ action: () -> Void) {
+        derivedInvalidationSuppressionCount += 1
+        action()
+        // Keep suppression active through the current UI update cycle so `onChange`
+        // handlers triggered by programmatic state restoration do not invalidate.
+        DispatchQueue.main.async {
+            derivedInvalidationSuppressionCount = max(0, derivedInvalidationSuppressionCount - 1)
         }
     }
 
@@ -487,6 +542,8 @@ struct ProfileView: View {
     }
 
     private func createNewProfile() {
+        guard canAddProfile else { return }
+
         let newProfile = Profile(name: "")
         modelContext.insert(newProfile)
         activeProfile = newProfile
@@ -512,31 +569,33 @@ struct ProfileView: View {
     }
 
     private func syncStateFromProfile(_ profile: Profile) {
-        // Core identity
-        state.name = profile.name
+        withSuppressedDerivedInvalidation {
+            // Core identity
+            state.name = profile.name
 
-        // Demographics
-        if let g = Gender(rawValue: profile.genderRawValue) {
-            state.gender = g
+            // Demographics
+            if let g = Gender(rawValue: profile.genderRawValue) {
+                state.gender = g
+            }
+
+            // Birth date/time
+            state.dob = profile.dob
+            state.tobHour = profile.tobHour
+            state.tobMinute = profile.tobMinute
+            state.tobSecond = profile.tobSecond
+
+            // Location
+            state.placeOfBirth = profile.placeOfBirth
+            state.birthLatitude = profile.birthLatitude
+            state.birthLongitude = profile.birthLongitude
+            state.birthTimeZoneIdentifier = profile.birthTimeZoneIdentifier
+
+            // Derived signs
+            state.lunarSignDeterministic = profile.lunarSignDeterministic
+            state.moonLongitudeDeterministic = profile.moonLongitudeDeterministic
+            state.solarSign = profile.solarSign
+            state.chineseSign = profile.chineseSign
         }
-
-        // Birth date/time
-        state.dob = profile.dob
-        state.tobHour = profile.tobHour
-        state.tobMinute = profile.tobMinute
-        state.tobSecond = profile.tobSecond
-
-        // Location
-        state.placeOfBirth = profile.placeOfBirth
-        state.birthLatitude = profile.birthLatitude
-        state.birthLongitude = profile.birthLongitude
-        state.birthTimeZoneIdentifier = profile.birthTimeZoneIdentifier
-
-        // Derived signs
-        state.lunarSignDeterministic = profile.lunarSignDeterministic
-        state.moonLongitudeDeterministic = profile.moonLongitudeDeterministic
-        state.solarSign = profile.solarSign
-        state.chineseSign = profile.chineseSign
     }
 
     private func syncProfileFromState(_ profile: Profile) {

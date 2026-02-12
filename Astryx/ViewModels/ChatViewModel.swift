@@ -29,7 +29,11 @@ final class ChatViewModel: ObservableObject {
         }
     }
 
-    @Published var messages: [Message] = []
+    @Published var messages: [Message] = [] {
+        didSet {
+            persistActiveProfileMessages()
+        }
+    }
     @Published var input: String = ""
     @Published var isStreaming: Bool = false
     @Published var errorMessage: String? = nil
@@ -44,6 +48,10 @@ final class ChatViewModel: ObservableObject {
     private var chineseSign: String = "—"
 
     private var currentSendTask: Task<Void, Never>?
+    private var activeProfileID: String = ""
+    private var isRestoringMessages: Bool = false
+    private let userDefaults = UserDefaults.standard
+    private let storageKeyPrefix = "ChatViewModel.messages."
 
     deinit {
         currentSendTask?.cancel()
@@ -51,6 +59,17 @@ final class ChatViewModel: ObservableObject {
 
     func setService(_ service: any AIInsightService) {
         self.aiService = service
+    }
+
+    func activateProfile(id: String) {
+        let normalizedID = normalizeProfileID(id)
+        guard normalizedID != activeProfileID else { return }
+
+        activeProfileID = normalizedID
+        currentSendTask?.cancel()
+        isStreaming = false
+        errorMessage = nil
+        loadMessagesForActiveProfile()
     }
 
     /// Sets the free-form user profile context (e.g., name/DOB/TOB/place/timezone + any notes).
@@ -105,6 +124,14 @@ final class ChatViewModel: ObservableObject {
             guard let self else { return }
             await self.send()
         }
+    }
+
+    func clearChat() {
+        currentSendTask?.cancel()
+        isStreaming = false
+        input = ""
+        errorMessage = nil
+        messages = []
     }
 
     private func send() async {
@@ -170,7 +197,9 @@ CONVERSATION:
 INSTRUCTIONS:
 - Continue the conversation as the Assistant.
 - Do not repeat the system prompt.
-- Be concise and specific.
+- Keep replies brief by default: 2-4 short sentences.
+- Provide only one actionable recommendation unless asked for more.
+- Expand only when the user explicitly asks for detail.
 """
 
             // Stream response using AIProxy-backed service.
@@ -197,6 +226,54 @@ INSTRUCTIONS:
                 }
             }
             errorMessage = error.localizedDescription
+        }
+    }
+
+    private func normalizeProfileID(_ id: String) -> String {
+        let trimmed = id.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? "default" : trimmed
+    }
+
+    private func storageKey(for profileID: String) -> String {
+        "\(storageKeyPrefix)\(profileID)"
+    }
+
+    private func persistActiveProfileMessages() {
+        guard !isRestoringMessages else { return }
+
+        let normalizedID = normalizeProfileID(activeProfileID)
+        guard !normalizedID.isEmpty else { return }
+
+        do {
+            let data = try JSONEncoder().encode(messages)
+            userDefaults.set(data, forKey: storageKey(for: normalizedID))
+        } catch {
+            // Keep chat responsive if persistence fails.
+            print("Failed to persist chat messages:", error)
+        }
+    }
+
+    private func loadMessagesForActiveProfile() {
+        let normalizedID = normalizeProfileID(activeProfileID)
+        let key = storageKey(for: normalizedID)
+
+        guard let data = userDefaults.data(forKey: key) else {
+            isRestoringMessages = true
+            messages = []
+            isRestoringMessages = false
+            return
+        }
+
+        do {
+            let decoded = try JSONDecoder().decode([Message].self, from: data)
+            isRestoringMessages = true
+            messages = decoded
+            isRestoringMessages = false
+        } catch {
+            isRestoringMessages = true
+            messages = []
+            isRestoringMessages = false
+            print("Failed to load chat messages:", error)
         }
     }
 }
