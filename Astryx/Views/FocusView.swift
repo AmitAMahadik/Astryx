@@ -25,20 +25,30 @@ struct FocusView: View {
 
     @ViewBuilder
     private func focusCardCell(_ area: FocusArea) -> some View {
-        ZStack {
-            FocusCardView(
-                area: area,
-                isSelected: state.focusArea == area,
-                isFlipped: false,
-                backText: vm.backText(for: area),
-                isExpanded: false
-            )
-            .matchedGeometryEffect(
-                id: area.rawValue,
-                in: cardNamespace,
-                isSource: expandedArea != area
-            )
-            .opacity(expandedArea == area ? 0 : 1)
+        VStack(spacing: 6) {
+            ZStack {
+                FocusCardView(
+                    area: area,
+                    isSelected: state.focusArea == area,
+                    isFlipped: false,
+                    backText: vm.backText(for: area),
+                    isExpanded: false
+                )
+                .matchedGeometryEffect(
+                    id: area.rawValue,
+                    in: cardNamespace,
+                    isSource: expandedArea != area
+                )
+                .opacity(expandedArea == area ? 0 : 1)
+            }
+
+            Text(area.rawValue)
+                .font(CosmicTheme.Typography.smallCaps)
+                .tracking(1.1)
+                .foregroundStyle(CosmicTheme.Colors.moonSilver.opacity(0.72))
+                .lineLimit(1)
+                .minimumScaleFactor(0.85)
+                .accessibilityHidden(true)
         }
         .onTapGesture {
             lightHaptic()
@@ -59,8 +69,8 @@ struct FocusView: View {
                 .frame(maxWidth: 220) // keep visual balance above grid
             Spacer()
         }
-        .padding(.top, 8)
-        .padding(.bottom, 12)
+        .padding(.top, -60)
+        .padding(.bottom, 10)
     }
 
     private var focusGrid: some View {
@@ -69,16 +79,19 @@ struct FocusView: View {
                 focusCardCell(area)
             }
         }
-        .padding(.top, 8)
+        .padding(.top, 0)
         .padding(.horizontal, 16)
     }
 
     var body: some View {
         ZStack {
+            CosmicBackgroundView(variant: .focus)
+
             VStack(alignment: .leading, spacing: 0) {
                 purposeTopCard
                 focusGrid
             }
+            .padding(.top, -12)
 
             if let expanded = expandedArea {
                 Color.black
@@ -114,6 +127,14 @@ struct FocusView: View {
                     }
                 }
                 .ignoresSafeArea()
+            }
+        }
+        .navigationTitle("")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbarBackground(.hidden, for: .navigationBar)
+        .toolbar {
+            ToolbarItem(placement: .principal) {
+                CosmicHeaderView(showsDivider: false)
             }
         }
         .task(id: state.focusArea) {

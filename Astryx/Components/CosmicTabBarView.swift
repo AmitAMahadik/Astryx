@@ -29,7 +29,8 @@ struct CosmicTabBarView: View {
             }
         }
         .padding(.horizontal, 14)
-        .padding(.vertical, 10)
+        // ~2× thickness vs the original (more vertical padding).
+        .padding(.vertical, 20)
         .background(glassCapsule)
         .clipShape(Capsule(style: .continuous))
         .overlay {
@@ -67,10 +68,10 @@ struct CosmicTabBarView: View {
         return Button {
             selection = item.id
         } label: {
-            VStack(spacing: 6) {
+            VStack(spacing: 10) {
                 Image(systemName: item.systemImage)
                     .symbolRenderingMode(.hierarchical)
-                    .font(.system(size: 18, weight: .semibold))
+                    .font(.system(size: 20, weight: .semibold))
                     .foregroundStyle(
                         isSelected
                         ? CosmicTheme.Colors.moonSilver.opacity(0.95)
@@ -99,11 +100,11 @@ struct CosmicTabBarView: View {
             // Minimal underline/arc indicator.
             Capsule(style: .continuous)
                 .fill(CosmicTheme.Colors.goldHighlight.opacity(0.75))
-                .frame(width: 18, height: 2)
+                .frame(width: 22, height: 2)
                 .shadow(color: CosmicTheme.Colors.goldHighlight.opacity(0.25), radius: 6, x: 0, y: 0)
                 .transition(.opacity.combined(with: .scale(scale: 0.9)))
         } else {
-            Color.clear.frame(width: 18, height: 2)
+            Color.clear.frame(width: 22, height: 2)
         }
     }
 }

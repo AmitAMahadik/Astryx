@@ -64,169 +64,190 @@ struct ProfileView: View {
     }
 
     var body: some View {
-        Form {
-            Section("Profile") {
-                HStack {
-                    Text("Name")
-                    Spacer()
-                    TextField("", text: $state.name)
-                        .multilineTextAlignment(.trailing)
-                        .textContentType(.name)
-                        .submitLabel(.done)
-                }
+        ZStack {
+            CosmicBackgroundView(variant: .profile)
 
-                Picker("Gender", selection: $state.gender) {
-                    ForEach(Gender.allCases) { g in
-                        Text(g.rawValue).tag(g)
-                    }
-                }
-
-                VStack(alignment: .leading, spacing: 4) {
-                    HStack {
-                        Text("Birth Date")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-
-                        Spacer()
-
-                        Text("Birth Time")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-
-                    HStack {
-                        DatePicker(
-                            "Date of Birth",
-                            selection: $state.dob,
-                            displayedComponents: .date
-                        )
-                        .labelsHidden()
-                        .onChange(of: state.dob) { _, _ in
-                            guard !isDerivedInvalidationSuppressed else { return }
-                            invalidateValidatedPlaceAndDerivedResults()
+            ScrollView {
+                VStack(spacing: 14) {
+                    glassCard(title: "PROFILE") {
+                        HStack {
+                            Text("Name")
+                            Spacer()
+                            TextField("", text: $state.name)
+                                .multilineTextAlignment(.trailing)
+                                .textContentType(.name)
+                                .submitLabel(.done)
                         }
 
-                        Spacer()
+                        Divider().opacity(0.25)
 
-                        DatePicker(
-                            "Time of Birth",
-                            selection: Binding(
-                                get: { state.timeOfBirthPickerDate },
-                                set: { state.timeOfBirthPickerDate = $0 }
-                            ),
-                            displayedComponents: .hourAndMinute
-                        )
-                        .labelsHidden()
-                        .environment(\.timeZone, TimeZone(secondsFromGMT: 0)!)
-                        .onChange(of: state.timeOfBirthPickerDate) { _, _ in
-                            guard !isDerivedInvalidationSuppressed else { return }
-                            invalidateValidatedPlaceAndDerivedResults()
+                        HStack {
+                            Text("Gender")
+                            Spacer()
+                            Menu {
+                                ForEach(Gender.allCases) { g in
+                                    Button {
+                                        state.gender = g
+                                    } label: {
+                                        if state.gender == g {
+                                            Label(g.rawValue, systemImage: "checkmark")
+                                        } else {
+                                            Text(g.rawValue)
+                                        }
+                                    }
+                                }
+                            } label: {
+                                HStack(spacing: 6) {
+                                    Text(state.gender.rawValue)
+                                        .foregroundStyle(CosmicTheme.Colors.moonSilver.opacity(0.92))
+                                    Image(systemName: "chevron.up.chevron.down")
+                                        .font(.caption.weight(.semibold))
+                                        .foregroundStyle(CosmicTheme.Colors.moonSilver.opacity(0.60))
+                                }
+                            }
+                        }
+
+                        Divider().opacity(0.25)
+
+                        VStack(alignment: .leading, spacing: 8) {
+                            HStack {
+                                Text("Birth Date")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+
+                                Spacer()
+
+                                Text("Birth Time")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+
+                            HStack {
+                                DatePicker(
+                                    "Date of Birth",
+                                    selection: $state.dob,
+                                    displayedComponents: .date
+                                )
+                                .labelsHidden()
+                                .onChange(of: state.dob) { _, _ in
+                                    guard !isDerivedInvalidationSuppressed else { return }
+                                    invalidateValidatedPlaceAndDerivedResults()
+                                }
+
+                                Spacer()
+
+                                DatePicker(
+                                    "Time of Birth",
+                                    selection: Binding(
+                                        get: { state.timeOfBirthPickerDate },
+                                        set: { state.timeOfBirthPickerDate = $0 }
+                                    ),
+                                    displayedComponents: .hourAndMinute
+                                )
+                                .labelsHidden()
+                                .environment(\.timeZone, TimeZone(secondsFromGMT: 0)!)
+                                .onChange(of: state.timeOfBirthPickerDate) { _, _ in
+                                    guard !isDerivedInvalidationSuppressed else { return }
+                                    invalidateValidatedPlaceAndDerivedResults()
+                                }
+                            }
+                            .accessibilityElement(children: .contain)
+                        }
+
+                        Divider().opacity(0.25)
+
+                        VStack(alignment: .leading, spacing: 10) {
+                            HStack(alignment: .center, spacing: 10) {
+                                TextField("Place of Birth (City, Country)", text: $state.placeOfBirth)
+                                    .textContentType(.addressCity)
+                                    .onChange(of: state.placeOfBirth) { _, _ in
+                                        guard !isDerivedInvalidationSuppressed else { return }
+                                        invalidateValidatedPlaceAndDerivedResults()
+                                    }
+
+                                if isValidatingPlace {
+                                    ProgressView()
+                                }
+
+                                Button {
+                                    validatePlace()
+                                } label: {
+                                    Image(systemName: isPlaceValid ? "checkmark.circle.fill" : "questionmark.circle.fill")
+                                        .symbolRenderingMode(.hierarchical)
+                                        .foregroundStyle(isPlaceValid ? .green : CosmicTheme.Colors.moonSilver.opacity(0.85))
+                                        .font(.system(size: 18, weight: .semibold))
+                                }
+                                .buttonStyle(.plain)
+                                .frame(width: 34, height: 34)
+                                .background {
+                                    Circle()
+                                        .fill(.thinMaterial)
+                                        .overlay {
+                                            Circle()
+                                                .stroke(CosmicTheme.Colors.accentGlow.opacity(0.12), lineWidth: 1)
+                                        }
+                                }
+                                .disabled(isValidatingPlace)
+                                .accessibilityLabel(isPlaceValid ? "Revalidate place of birth" : "Validate place of birth")
+                            }
+
+                            if let lat = state.birthLatitude, let lon = state.birthLongitude {
+                                HStack(spacing: 8) {
+                                    Image(systemName: "globe")
+                                        .symbolRenderingMode(.hierarchical)
+
+                                    Text(formatLatLonDM(latitude: lat, longitude: lon))
+
+                                    Image(systemName: "clock")
+                                        .symbolRenderingMode(.hierarchical)
+
+                                    Text(state.birthTimeZoneIdentifier ?? "Unknown")
+                                }
+                                .font(.footnote)
+                                .foregroundStyle(.secondary)
+                            } else if let placeValidationError, !placeValidationError.isEmpty {
+                                Text(placeValidationError)
+                                    .font(.footnote)
+                                    .foregroundStyle(.red)
+                            } else {
+                                Text("Tip: Use ‘City, State/Region, Country’ for best results.")
+                                    .font(.footnote)
+                                    .foregroundStyle(.secondary)
+                            }
                         }
                     }
-                    .accessibilityElement(children: .contain)
-                }
 
-                HStack(alignment: .center, spacing: 10) {
-                    TextField("Place of Birth (City, Country)", text: $state.placeOfBirth)
-                        .textContentType(.addressCity)
-                        .onChange(of: state.placeOfBirth) { _, _ in
-                            guard !isDerivedInvalidationSuppressed else { return }
-                            invalidateValidatedPlaceAndDerivedResults()
+                    VStack(spacing: 10) {
+                        CosmicSnapshotCard(summary: snapshotSummaryForProfile())
+
+                        if isLookingUpSigns {
+                            StatusCard(
+                                systemImage: "hourglass",
+                                text: "Calculating signs…",
+                                showsProgress: true
+                            )
+                        } else if !isPlaceValid {
+                            StatusCard(
+                                systemImage: "location.slash",
+                                text: "Validate your place of birth to calculate your signs."
+                            )
                         }
 
-                    if isValidatingPlace {
-                        ProgressView()
-                    } else if isPlaceValid {
-                        Image(systemName: "checkmark.circle.fill")
-                            .foregroundStyle(.green)
-                            .accessibilityLabel("Place of birth validated")
-                    }
-
-                    Button {
-                        validatePlace()
-                    } label: {
-                        if isValidatingPlace {
-                            ProgressView()
-                                .controlSize(.small)
-                        } else {
-                            Text(isPlaceValid ? "Revalidate" : "Validate")
+                        if let unifiedSignsError, !unifiedSignsError.isEmpty {
+                            StatusCard(
+                                systemImage: "exclamationmark.triangle.fill",
+                                text: unifiedSignsError
+                            )
                         }
                     }
-                    .buttonStyle(.bordered)
-                    .controlSize(.small)
-                    .disabled(isValidatingPlace)
                 }
-
-                if let lat = state.birthLatitude, let lon = state.birthLongitude {
-                    HStack(spacing: 8) {
-                        Image(systemName: "globe")
-                            .symbolRenderingMode(.hierarchical)
-
-                        Text(formatLatLonDM(latitude: lat, longitude: lon))
-
-                        Image(systemName: "clock")
-                            .symbolRenderingMode(.hierarchical)
-
-                        Text(state.birthTimeZoneIdentifier ?? "Unknown")
-                    }
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-                } else if let placeValidationError, !placeValidationError.isEmpty {
-                    Text(placeValidationError)
-                        .font(.footnote)
-                        .foregroundStyle(.red)
-                } else {
-                    Text("Tip: Use ‘City, State/Region, Country’ for best results.")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 12)
             }
-            Section {
-                VStack(spacing: 12) {
-                    SignCard(
-                        title: "Lunar (Ephemeris)",
-                        systemImage: "moon.stars.fill",
-                        value: displayedMoonSign
-                    )
-
-                    SignCard(
-                        title: "Sun Sign",
-                        systemImage: "sun.max.fill",
-                        value: displayedSunSign
-                    )
-
-                    SignCard(
-                        title: "Chinese Zodiac",
-                        systemImage: "sparkles",
-                        value: displayedChineseSign
-                    )
-
-                    if isLookingUpSigns {
-                        StatusCard(
-                            systemImage: "hourglass",
-                            text: "Calculating signs…",
-                            showsProgress: true
-                        )
-                    } else if !isPlaceValid {
-                        StatusCard(
-                            systemImage: "location.slash",
-                            text: "Validate your place of birth to calculate your signs."
-                        )
-                    }
-
-                    if let unifiedSignsError, !unifiedSignsError.isEmpty {
-                        StatusCard(
-                            systemImage: "exclamationmark.triangle.fill",
-                            text: unifiedSignsError
-                        )
-                    }
-                }
-                .padding(.vertical, 4)
-            } header: {
-                Text("Signs")
-            }
-            .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
         }
+        .navigationTitle("")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbarBackground(.hidden, for: .navigationBar)
         .onChange(of: selectedProfileID) { _, newValue in
             guard !newValue.isEmpty else { return }
             if let match = profiles.first(where: { $0.id.uuidString == newValue }) {
@@ -239,6 +260,9 @@ struct ProfileView: View {
             }
         }
         .toolbar {
+            ToolbarItem(placement: .principal) {
+                CosmicHeaderView(showsDivider: false)
+            }
             ToolbarItem(placement: .topBarTrailing) {
                 Menu {
                     Section("Select Profile") {
@@ -273,7 +297,10 @@ struct ProfileView: View {
                     }
                     .disabled(profiles.count <= 1)
                 } label: {
-                    Label(currentProfileTitle, systemImage: "person.crop.circle")
+                    Image(systemName: "person.crop.circle")
+                        .symbolRenderingMode(.hierarchical)
+                        .font(.system(size: 18, weight: .semibold))
+                        .foregroundStyle(CosmicTheme.Colors.moonSilver.opacity(0.92))
                 }
             }
         }
@@ -300,6 +327,38 @@ struct ProfileView: View {
     }
 
     // MARK: - Helpers
+
+    private func glassCard<Content: View>(title: String, @ViewBuilder content: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text(title)
+                .font(CosmicTheme.Typography.smallCaps)
+                .tracking(1.4)
+                .foregroundStyle(CosmicTheme.Colors.moonSilver.opacity(0.70))
+
+            content()
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(.ultraThinMaterial)
+        .clipShape(RoundedRectangle(cornerRadius: CosmicTheme.Constants.CornerRadius.card, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: CosmicTheme.Constants.CornerRadius.card, style: .continuous)
+                .stroke(CosmicTheme.Colors.accentGlow.opacity(0.14), lineWidth: 1)
+        }
+        .shadow(color: CosmicTheme.Constants.Glow.color.opacity(0.14), radius: 18, x: 0, y: 8)
+    }
+
+    private func snapshotSummaryForProfile() -> CosmicSnapshotCard.ProfileSummary {
+        let birthMomentUTC = (try? state.birthMomentUTC()) ?? state.dob
+        let zodiac = ChineseZodiac.zodiac(for: birthMomentUTC)
+
+        return CosmicSnapshotCard.ProfileSummary(
+            sunSign: displayedSunSign,
+            moonSign: displayedMoonSign,
+            chineseAnimal: zodiac.animal,
+            chineseElement: zodiac.element
+        )
+    }
 
     private func formatCoordinateDM(_ value: Double, positive: String, negative: String) -> String {
         let absValue = abs(value)

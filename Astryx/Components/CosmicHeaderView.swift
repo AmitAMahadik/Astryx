@@ -8,38 +8,31 @@
 import SwiftUI
 
 struct CosmicHeaderView: View {
-    @Environment(\.displayScale) private var displayScale
+    let showsDivider: Bool
 
     @State private var shimmerPhase: CGFloat = -1
 
+    init(showsDivider: Bool = true) {
+        self.showsDivider = showsDivider
+    }
+
     var body: some View {
-        VStack(spacing: 10) {
-            HStack(alignment: .center, spacing: 12) {
-                iconChrome(systemName: "moon.stars.fill")
-                    .accessibilityLabel("Moon")
+        VStack(spacing: showsDivider ? 8 : 2) {
+            VStack(spacing: 2) {
+                shimmerTitle
 
-                Spacer(minLength: 0)
-
-                VStack(spacing: 2) {
-                    shimmerTitle
-
-                    Text("AI CELESTIAL GUIDE")
-                        .font(CosmicTheme.Typography.smallCaps)
-                        .foregroundStyle(CosmicTheme.Colors.moonSilver.opacity(0.70))
-                        .tracking(1.6)
-                        .accessibilityAddTraits(.isHeader)
-                }
-                .multilineTextAlignment(.center)
-
-                Spacer(minLength: 0)
-
-                iconChrome(systemName: "slider.horizontal.3")
-                    .accessibilityLabel("Settings")
+                Text("AI CELESTIAL GUIDE")
+                    .font(CosmicTheme.Typography.smallCaps)
+                    .foregroundStyle(CosmicTheme.Colors.moonSilver.opacity(0.70))
+                    .tracking(1.6)
+                    .accessibilityAddTraits(.isHeader)
             }
-            .padding(.horizontal, 16)
-            .padding(.top, 8)
+            .multilineTextAlignment(.center)
+            .frame(maxWidth: .infinity)
 
-            dividerGlowLine
+            if showsDivider {
+                dividerGlowLine
+            }
         }
         .onAppear {
             // A single lightweight repeating animation; shimmer is masked to the title only.
@@ -52,7 +45,9 @@ struct CosmicHeaderView: View {
 
     private var shimmerTitle: some View {
         Text("ASTRYX")
-            .font(CosmicTheme.Typography.title)
+            // Slightly smaller than the full-screen header version so it fits comfortably
+            // when hosted in a navigation bar's principal toolbar area.
+            .font(.system(size: 22, weight: .bold, design: .rounded))
             .tracking(2.2)
             .foregroundStyle(CosmicTheme.Colors.moonSilver.opacity(0.92))
             .overlay {
@@ -78,43 +73,24 @@ struct CosmicHeaderView: View {
             }
             .mask(
                 Text("ASTRYX")
-                    .font(CosmicTheme.Typography.title)
+                    .font(.system(size: 22, weight: .bold, design: .rounded))
                     .tracking(2.2)
             )
             .accessibilityLabel("ASTRYX")
     }
 
-    private func iconChrome(systemName: String) -> some View {
-        Image(systemName: systemName)
-            .symbolRenderingMode(.hierarchical)
-            .font(.system(size: 16, weight: .semibold))
-            .foregroundStyle(CosmicTheme.Colors.moonSilver.opacity(0.90))
-            .frame(width: 36, height: 36)
-            .background {
-                Circle()
-                    .fill(.thinMaterial)
-                    .overlay {
-                        Circle()
-                            .stroke(CosmicTheme.Colors.accentGlow.opacity(0.18), lineWidth: 1)
-                    }
-                    .shadow(color: CosmicTheme.Constants.Glow.color.opacity(0.35), radius: 10, x: 0, y: 0)
-            }
-    }
-
     private var dividerGlowLine: some View {
-        let hairline = max(1.0 / displayScale, 0.5)
         return ZStack {
             Rectangle()
                 .fill(CosmicTheme.Colors.accentGlow.opacity(0.18))
-                .frame(height: hairline)
+                .frame(height: 1)
 
             Rectangle()
                 .fill(CosmicTheme.Colors.accentGlow.opacity(0.12))
-                .frame(height: hairline)
+                .frame(height: 1)
                 .blur(radius: 6)
         }
         .padding(.horizontal, 16)
-        .padding(.bottom, 6)
         .accessibilityHidden(true)
     }
 }

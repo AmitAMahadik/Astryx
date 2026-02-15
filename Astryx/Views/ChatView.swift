@@ -17,15 +17,24 @@ struct ChatView: View {
     @StateObject private var viewModel = ChatViewModel()
     @State private var showClearChatConfirmation = false
     @State private var showSnapshotCardThisSession = true
+    
+    // Clearance so the input bar sits above the floating custom tab bar.
+    private let floatingTabBarClearance: CGFloat = 120
+
+    @State private var chatContentWidth: CGFloat = 0
+    
+    // Snapshot fallbacks for first-run (before cached signs are populated).
+    @State private var snapshotSunSignFallback: String = "—"
+    @State private var snapshotMoonSignFallback: String = "—"
+    @State private var isComputingSnapshotMoon: Bool = false
 
     var body: some View {
         ZStack {
             CosmicBackgroundView(variant: .chat)
 
             VStack(spacing: 0) {
-                CosmicHeaderView()
-
                 ScrollViewReader { proxy in
+                    let lastMessageText = viewModel.messages.last?.text ?? ""
                     ScrollView {
                         LazyVStack(spacing: 12) {
                             if viewModel.messages.isEmpty {
@@ -47,13 +56,29 @@ struct ChatView: View {
                         .padding(.horizontal, 16)
                         .padding(.vertical, 12)
                     }
+                    .background(
+                        GeometryReader { geo in
+                            Color.clear
+                                .preference(key: ChatContentWidthKey.self, value: geo.size.width)
+                        }
+                    )
                     .background(Color.clear)
+                    .onPreferenceChange(ChatContentWidthKey.self) { newValue in
+                        chatContentWidth = newValue
+                    }
                     .onChange(of: viewModel.messages.count) { _, _ in
                         // Scroll to bottom on new message
                         if let last = viewModel.messages.last {
                             withAnimation(.easeOut(duration: 0.18)) {
                                 proxy.scrollTo(last.id, anchor: .bottom)
                             }
+                        }
+                    }
+                    .onChange(of: lastMessageText) { _, _ in
+                        // While streaming, keep the latest assistant response pinned to the bottom as it grows.
+                        guard viewModel.isStreaming, let last = viewModel.messages.last else { return }
+                        withAnimation(.easeOut(duration: 0.12)) {
+                            proxy.scrollTo(last.id, anchor: .bottom)
                         }
                     }
                 }
@@ -80,12 +105,17 @@ struct ChatView: View {
                 )
                 .padding(.horizontal, 16)
                 .padding(.top, 10)
-                .padding(.bottom, 80) // Extra bottom padding to account for the tab bar and safe area
+                .padding(.bottom, floatingTabBarClearance)
             }
         }
         .navigationTitle("")
         .navigationBarTitleDisplayMode(.inline)
+        // Let the cosmic background show through the navigation bar area too.
+        .toolbarBackground(.hidden, for: .navigationBar)
         .toolbar {
+            ToolbarItem(placement: .principal) {
+                CosmicHeaderView(showsDivider: false)
+            }
             ToolbarItem(placement: .topBarTrailing) {
                 Button(role: .destructive) {
                     showClearChatConfirmation = true
@@ -111,10 +141,12 @@ struct ChatView: View {
             viewModel.setService(aiService)
             viewModel.activateProfile(id: selectedProfileID)
             syncContextToViewModel(seedWelcomeIfNeeded: true)
+            await computeSnapshotSignsIfNeeded()
         }
         .onChange(of: selectedProfileID) { _, newProfileID in
             viewModel.activateProfile(id: newProfileID)
             syncContextToViewModel(seedWelcomeIfNeeded: true)
+            Task { await computeSnapshotSignsIfNeeded() }
         }
     }
 
@@ -135,7 +167,7 @@ struct ChatView: View {
     @ViewBuilder
     private func messageRow(_ message: ChatViewModel.Message, at index: Int) -> some View {
         HStack {
-            if message.role == .assistant { Spacer(minLength: 40) }
+            if message.role == .assistant { Spacer(minLength: 28) }
 
             VStack(alignment: message.role == .user ? .trailing : .leading, spacing: 6) {
                 if message.role == .assistant {
@@ -152,14 +184,24 @@ struct ChatView: View {
                                 )
                             }
 
-                            CosmicChatBubble(role: .assistant, text: message.text)
+                            CosmicChatBubble(
+                                role: .assistant,
+                                text: message.text,
+                                maxWidth: maxBubbleWidth(for: .assistant)
+                            )
                         }
                     }
                 } else {
-                    CosmicChatBubble(
-                        role: message.role == .user ? .user : .assistant,
-                        text: message.text
-                    )
+                    HStack(alignment: .top, spacing: 10) {
+                        CosmicChatBubble(
+                            role: .user,
+                            text: message.text,
+                            maxWidth: maxBubbleWidth(for: .user)
+                        )
+
+                        userAvatarIcon
+                            .padding(.top, 2)
+                    }
                 }
 
                 Text(message.date, style: .time)
@@ -168,9 +210,36 @@ struct ChatView: View {
             }
             .frame(maxWidth: .infinity, alignment: message.role == .user ? .trailing : .leading)
 
-            if message.role == .user { Spacer(minLength: 40) }
+            if message.role == .user { Spacer(minLength: 28) }
         }
         .padding(.horizontal, 8)
+    }
+
+    private func maxBubbleWidth(for role: CosmicChatBubble.Role) -> CGFloat {
+        // Simple, deterministic sizing that still feels responsive on iPhone.
+        let w = chatContentWidth > 0 ? chatContentWidth : 390
+        switch role {
+        case .assistant: return w * 0.74
+        case .user: return w * 0.66
+        }
+    }
+
+    private var userAvatarIcon: some View {
+        Image(systemName: "person.crop.circle.fill")
+            .symbolRenderingMode(.hierarchical)
+            .font(.system(size: 22, weight: .semibold))
+            .foregroundStyle(CosmicTheme.Colors.moonSilver.opacity(0.85))
+            .frame(width: 28, height: 28)
+            .background {
+                Circle()
+                    .fill(CosmicTheme.Colors.backgroundEnd.opacity(0.35))
+                    .overlay {
+                        Circle()
+                            .stroke(CosmicTheme.Colors.moonSilver.opacity(0.10), lineWidth: 1)
+                    }
+                    .shadow(color: CosmicTheme.Constants.Glow.color.opacity(0.10), radius: 10, x: 0, y: 0)
+            }
+            .accessibilityHidden(true)
     }
 
     private func isGeneratingAssistantMessage(_ message: ChatViewModel.Message) -> Bool {
@@ -289,11 +358,69 @@ struct ChatView: View {
         let zodiac = ChineseZodiac.zodiac(for: birthMomentUTC)
 
         return CosmicSnapshotCard.ProfileSummary(
-            sunSign: state.solarSign,
-            moonSign: state.lunarSignDeterministic,
+            sunSign: preferredSunSign,
+            moonSign: preferredMoonSign,
             chineseAnimal: zodiac.animal,
             chineseElement: zodiac.element
         )
+    }
+
+    private var preferredSunSign: String {
+        let cached = state.solarSign.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !cached.isEmpty, cached != "—" { return cached }
+        return snapshotSunSignFallback
+    }
+
+    private var preferredMoonSign: String {
+        let cached = state.lunarSignDeterministic.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !cached.isEmpty, cached != "—" { return cached }
+        return isComputingSnapshotMoon ? "Calculating…" : snapshotMoonSignFallback
+    }
+
+    @MainActor
+    private func computeSnapshotSignsIfNeeded() async {
+        // Sun sign can be derived from DOB for a deterministic first-run fallback.
+        snapshotSunSignFallback = westernSunSign(from: state.dob)
+
+        // If we already have the deterministic lunar sign cached, don't compute.
+        let cachedMoon = state.lunarSignDeterministic.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard cachedMoon.isEmpty || cachedMoon == "—" else { return }
+
+        guard !isComputingSnapshotMoon else { return }
+        isComputingSnapshotMoon = true
+        defer { isComputingSnapshotMoon = false }
+
+        do {
+            let computed = try await state.computeDeterministicMoonInfo()
+            snapshotMoonSignFallback = computed.sign
+        } catch {
+            // If we can't compute yet (missing validated birth data), keep fallback as "—".
+            snapshotMoonSignFallback = "—"
+        }
+    }
+
+    private func westernSunSign(from date: Date) -> String {
+        var cal = Calendar(identifier: .gregorian)
+        cal.timeZone = TimeZone(secondsFromGMT: 0) ?? .current
+        let comps = cal.dateComponents([.month, .day], from: date)
+        let m = comps.month ?? 1
+        let d = comps.day ?? 1
+
+        // Western tropical Sun sign by month/day (time-of-day not required for typical UX).
+        switch (m, d) {
+        case (3, 21...31), (4, 1...19): return "Aries"
+        case (4, 20...30), (5, 1...20): return "Taurus"
+        case (5, 21...31), (6, 1...20): return "Gemini"
+        case (6, 21...30), (7, 1...22): return "Cancer"
+        case (7, 23...31), (8, 1...22): return "Leo"
+        case (8, 23...31), (9, 1...22): return "Virgo"
+        case (9, 23...30), (10, 1...22): return "Libra"
+        case (10, 23...31), (11, 1...21): return "Scorpio"
+        case (11, 22...30), (12, 1...21): return "Sagittarius"
+        case (12, 22...31), (1, 1...19): return "Capricorn"
+        case (1, 20...31), (2, 1...18): return "Aquarius"
+        default: return "Pisces" // (2, 19...29), (3, 1...20)
+        }
     }
 
     private func syncContextToViewModel(seedWelcomeIfNeeded: Bool = false) {
@@ -337,5 +464,12 @@ struct ChatView: View {
         Lunar sign (Sidereal): \(lunar)
         Chinese sign: \(state.chineseSign)
         """
+    }
+}
+
+private struct ChatContentWidthKey: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = nextValue()
     }
 }

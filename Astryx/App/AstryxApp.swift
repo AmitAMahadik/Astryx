@@ -19,8 +19,7 @@ enum AppTab: Hashable {
 @main
 struct AstryxApp: App {
     @StateObject private var appState = AppState()
-    @State private var selectedTab: AppTab = .profile
-    @State private var cosmicTabBarHeight: CGFloat = 0
+    @State private var selectedTab: AppTab
     
     private let aiService: any AIInsightService = AIInsightServiceFactory.make()
 
@@ -29,6 +28,11 @@ struct AstryxApp: App {
         // background visible in some layouts. Hide the underlying UITabBar so only our
         // floating `CosmicTabBarView` is rendered.
         UITabBar.appearance().isHidden = true
+
+        // If a profile is already selected, start the app on Focus for a better default flow.
+        let storedProfileID = (UserDefaults.standard.string(forKey: "selectedProfileID") ?? "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        _selectedTab = State(initialValue: storedProfileID.isEmpty ? .profile : .focus)
     }
     
     var sharedModelContainer: ModelContainer = {
@@ -49,12 +53,6 @@ struct AstryxApp: App {
     var body: some Scene {
         WindowGroup {
             GeometryReader { proxy in
-                // Reserve exactly what we render for the floating tab bar (including its safe-area padding).
-                // Note: shadows/glows do not contribute to layout size, so we add a small visual
-                // clearance to ensure bottom content (e.g. chat input) is fully above the capsule.
-                let visualClearance: CGFloat = 22
-                let reserve = max(0, cosmicTabBarHeight + visualClearance)
-
                 ZStack(alignment: .bottom) {
                     TabView(selection: $selectedTab) {
                         NavigationStack {
@@ -91,32 +89,15 @@ struct AstryxApp: App {
                     }
                     // Keep existing TabView navigation logic, but replace the default tab bar UI.
                     .toolbar(.hidden, for: .tabBar)
-                    .padding(.bottom, reserve)
 
                     CosmicTabBarView(selection: $selectedTab)
                         // Sit above the home indicator / bottom safe area.
-                        .padding(.bottom, proxy.safeAreaInsets.bottom)
-                        .background(
-                            GeometryReader { tabProxy in
-                                Color.clear
-                                    .preference(key: CosmicTabBarHeightKey.self, value: tabProxy.size.height)
-                            }
-                        )
+                        // Keep it low (closer to screen bottom) while still clearing the home indicator.
+                        .padding(.bottom, max(6, proxy.safeAreaInsets.bottom * 0.25))
                 }
                 .frame(width: proxy.size.width, height: proxy.size.height)
-                .onPreferenceChange(CosmicTabBarHeightKey.self) { newValue in
-                    cosmicTabBarHeight = newValue
-                }
             }
         }
         .modelContainer(sharedModelContainer)
-    }
-}
-
-private struct CosmicTabBarHeightKey: PreferenceKey {
-    static var defaultValue: CGFloat = 0
-    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
-        // Use the latest measured value.
-        value = nextValue()
     }
 }

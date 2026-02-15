@@ -15,6 +15,7 @@ struct CosmicChatBubble: View {
 
     let role: Role
     let text: String
+    var maxWidth: CGFloat? = nil
 
     private let cornerRadius: CGFloat = 22
     private let contentPadding: CGFloat = 12
@@ -36,11 +37,12 @@ struct CosmicChatBubble: View {
             }
 
             Text(displayText)
-                .font(role == .assistant ? .system(.body, design: .monospaced) : .body)
+                .font(role == .assistant ? .system(.callout, design: .monospaced) : .body)
                 .foregroundStyle(.primary)
                 .multilineTextAlignment(role == .user ? .trailing : .leading)
                 .padding(contentPadding)
         }
+        .frame(maxWidth: maxWidth, alignment: role == .user ? .trailing : .leading)
         .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
         .compositingGroup()
     }
