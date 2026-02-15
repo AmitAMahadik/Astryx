@@ -131,6 +131,8 @@ struct FocusView: View {
         }
         .navigationTitle("")
         .navigationBarTitleDisplayMode(.inline)
+        // Cosmic UI is designed for a dark backdrop; enforce for readability in system Light Mode.
+        .preferredColorScheme(.dark)
         .toolbarBackground(.hidden, for: .navigationBar)
         .toolbar {
             ToolbarItem(placement: .principal) {

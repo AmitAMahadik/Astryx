@@ -275,6 +275,8 @@ struct ProfileView: View {
         .animation(.easeOut(duration: 0.18), value: showResetConfirm)
         .navigationTitle("")
         .navigationBarTitleDisplayMode(.inline)
+        // Cosmic UI is designed for a dark backdrop; enforce for readability in system Light Mode.
+        .preferredColorScheme(.dark)
         .toolbarBackground(.hidden, for: .navigationBar)
         .onChange(of: selectedProfileID) { _, newValue in
             guard !newValue.isEmpty else { return }

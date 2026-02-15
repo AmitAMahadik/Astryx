@@ -107,14 +107,14 @@ final class ChatViewModel: ObservableObject {
                 let fullName = line.replacingOccurrences(of: "Name:", with: "").trimmingCharacters(in: .whitespaces)
                 let firstName = fullName.split(separator: " ").first.map(String.init) ?? ""
                 if !firstName.isEmpty && firstName != "Unknown" {
-                    return "Hello, \(firstName)."
+                    return "Hello \(firstName)."
                 }
             }
             return "Hello."
         }()
 
         messages.append(.init(role: .assistant, text: """
-            \(nameLine) I’m your astrologer guide. Ask a specific question and I’ll tailor the answer to your profile and focus area.
+            \(nameLine) I'm your astrologer guide. How can I guide you?
             """))
     }
 

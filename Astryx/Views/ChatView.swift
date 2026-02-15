@@ -154,6 +154,8 @@ struct ChatView: View {
         .animation(.easeOut(duration: 0.18), value: showClearChatConfirmation)
         .navigationTitle("")
         .navigationBarTitleDisplayMode(.inline)
+        // Cosmic UI is designed for a dark backdrop; enforce for readability in system Light Mode.
+        .preferredColorScheme(.dark)
         // Let the cosmic background show through the navigation bar area too.
         .toolbarBackground(.hidden, for: .navigationBar)
         .toolbar {
