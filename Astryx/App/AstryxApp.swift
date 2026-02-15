@@ -20,6 +20,7 @@ enum AppTab: Hashable {
 struct AstryxApp: App {
     @StateObject private var appState = AppState()
     @State private var selectedTab: AppTab
+    @State private var isKeyboardVisible: Bool = false
     
     private let aiService: any AIInsightService = AIInsightServiceFactory.make()
 
@@ -94,8 +95,17 @@ struct AstryxApp: App {
                         // Sit above the home indicator / bottom safe area.
                         // Keep it low (closer to screen bottom) while still clearing the home indicator.
                         .padding(.bottom, max(6, proxy.safeAreaInsets.bottom * 0.25))
+                        .opacity(isKeyboardVisible ? 0 : 1)
+                        .allowsHitTesting(!isKeyboardVisible)
+                        .animation(.easeOut(duration: 0.18), value: isKeyboardVisible)
                 }
                 .frame(width: proxy.size.width, height: proxy.size.height)
+            }
+            .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { _ in
+                isKeyboardVisible = true
+            }
+            .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in
+                isKeyboardVisible = false
             }
         }
         .modelContainer(sharedModelContainer)

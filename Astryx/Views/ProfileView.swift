@@ -244,7 +244,35 @@ struct ProfileView: View {
                 .padding(.horizontal, 16)
                 .padding(.vertical, 12)
             }
+
+            if showResetConfirm {
+                // Custom confirmation UI to match the cosmic visual style.
+                Color.black
+                    .opacity(0.42)
+                    .ignoresSafeArea()
+                    .onTapGesture {
+                        showResetConfirm = false
+                    }
+
+                CosmicConfirmDialog(
+                    title: "Delete Profile?",
+                    message: "This will permanently delete the current profile.",
+                    confirmTitle: "Delete",
+                    cancelTitle: "Cancel",
+                    onConfirm: {
+                        showResetConfirm = false
+                        deleteActiveProfile()
+                    },
+                    onCancel: {
+                        showResetConfirm = false
+                    }
+                )
+                .padding(.horizontal, 24)
+                .transition(.opacity.combined(with: .scale(scale: 0.98)))
+                .zIndex(50)
+            }
         }
+        .animation(.easeOut(duration: 0.18), value: showResetConfirm)
         .navigationTitle("")
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(.hidden, for: .navigationBar)
@@ -303,18 +331,6 @@ struct ProfileView: View {
                         .foregroundStyle(CosmicTheme.Colors.moonSilver.opacity(0.92))
                 }
             }
-        }
-        .confirmationDialog(
-            "Delete Profile?",
-            isPresented: $showResetConfirm,
-            titleVisibility: .visible
-        ) {
-            Button("Delete", role: .destructive) {
-                deleteActiveProfile()
-            }
-            Button("Cancel", role: .cancel) { }
-        } message: {
-            Text("This will permanently delete the current profile.")
         }
         .onAppear {
             ensureActiveProfileLoaded()

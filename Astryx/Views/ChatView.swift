@@ -20,6 +20,7 @@ struct ChatView: View {
     
     // Clearance so the input bar sits above the floating custom tab bar.
     private let floatingTabBarClearance: CGFloat = 120
+    @State private var isKeyboardVisible: Bool = false
 
     @State private var chatContentWidth: CGFloat = 0
     
@@ -27,6 +28,9 @@ struct ChatView: View {
     @State private var snapshotSunSignFallback: String = "—"
     @State private var snapshotMoonSignFallback: String = "—"
     @State private var isComputingSnapshotMoon: Bool = false
+    
+    // Coalesce frequent streaming updates to avoid multiple scroll updates per frame.
+    @State private var pendingAutoScrollTask: Task<Void, Never>? = nil
 
     var body: some View {
         ZStack {
@@ -77,8 +81,19 @@ struct ChatView: View {
                     .onChange(of: lastMessageText) { _, _ in
                         // While streaming, keep the latest assistant response pinned to the bottom as it grows.
                         guard viewModel.isStreaming, let last = viewModel.messages.last else { return }
-                        withAnimation(.easeOut(duration: 0.12)) {
-                            proxy.scrollTo(last.id, anchor: .bottom)
+                        let targetID = last.id
+                        
+                        pendingAutoScrollTask?.cancel()
+                        pendingAutoScrollTask = Task {
+                            // Small delay to batch multiple deltas into a single UI update.
+                            try? await Task.sleep(nanoseconds: 80_000_000)
+                            guard !Task.isCancelled else { return }
+                            await MainActor.run {
+                                // No animation here to minimize layout thrash during streaming.
+                                withTransaction(Transaction(animation: nil)) {
+                                    proxy.scrollTo(targetID, anchor: .bottom)
+                                }
+                            }
                         }
                     }
                 }
@@ -105,9 +120,38 @@ struct ChatView: View {
                 )
                 .padding(.horizontal, 16)
                 .padding(.top, 10)
-                .padding(.bottom, floatingTabBarClearance)
+                .padding(.bottom, isKeyboardVisible ? 12 : floatingTabBarClearance)
+            }
+
+            if showClearChatConfirmation {
+                // Custom confirmation UI to match the cosmic visual style.
+                Color.black
+                    .opacity(0.42)
+                    .ignoresSafeArea()
+                    .onTapGesture {
+                        showClearChatConfirmation = false
+                    }
+
+                CosmicConfirmDialog(
+                    title: "Clear chat history?",
+                    message: "This will remove all messages for the selected profile.",
+                    confirmTitle: "Clear Chat",
+                    cancelTitle: "Cancel",
+                    onConfirm: {
+                        showClearChatConfirmation = false
+                        viewModel.clearChat()
+                        syncContextToViewModel(seedWelcomeIfNeeded: true)
+                    },
+                    onCancel: {
+                        showClearChatConfirmation = false
+                    }
+                )
+                .padding(.horizontal, 24)
+                .transition(.opacity.combined(with: .scale(scale: 0.98)))
+                .zIndex(50)
             }
         }
+        .animation(.easeOut(duration: 0.18), value: showClearChatConfirmation)
         .navigationTitle("")
         .navigationBarTitleDisplayMode(.inline)
         // Let the cosmic background show through the navigation bar area too.
@@ -124,19 +168,6 @@ struct ChatView: View {
                 }
             }
         }
-        .confirmationDialog(
-            "Clear chat history?",
-            isPresented: $showClearChatConfirmation,
-            titleVisibility: .visible
-        ) {
-            Button("Clear Chat", role: .destructive) {
-                viewModel.clearChat()
-                syncContextToViewModel(seedWelcomeIfNeeded: true)
-            }
-            Button("Cancel", role: .cancel) { }
-        } message: {
-            Text("This will remove all messages for the selected profile.")
-        }
         .task {
             viewModel.setService(aiService)
             viewModel.activateProfile(id: selectedProfileID)
@@ -147,6 +178,12 @@ struct ChatView: View {
             viewModel.activateProfile(id: newProfileID)
             syncContextToViewModel(seedWelcomeIfNeeded: true)
             Task { await computeSnapshotSignsIfNeeded() }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { _ in
+            isKeyboardVisible = true
+        }
+        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in
+            isKeyboardVisible = false
         }
     }
 

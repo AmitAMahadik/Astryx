@@ -165,9 +165,13 @@ struct FocusCardView: View {
 
     @ViewBuilder
     private func formattedSummaryView(_ text: String, isCompact: Bool) -> some View {
+        let responseFont: Font = isCompact
+        ? .system(.caption2, design: .monospaced)
+        : .system(.callout, design: .monospaced)
+
         if isWaitingPlaceholder {
             Text("Reaching for the stars" + animatedEllipsis)
-                .font(isCompact ? .caption2 : .body)
+                .font(responseFont)
                 .foregroundStyle(.secondary)
                 .lineSpacing(isCompact ? 2 : 6)
         } else {
@@ -175,7 +179,7 @@ struct FocusCardView: View {
 
             if !parsed.hasAnyContent {
                 Text(text)
-                    .font(isCompact ? .caption2 : .body)
+                    .font(responseFont)
                     .foregroundStyle(.primary)
                     .lineSpacing(isCompact ? 2 : 6)
                     .multilineTextAlignment(.leading)
@@ -188,7 +192,7 @@ struct FocusCardView: View {
                                 .font(isCompact ? .caption.bold() : .headline)
                                 .foregroundStyle(.secondary)
                             Text(parsed.theme)
-                                .font(isCompact ? .caption2 : .body)
+                                .font(responseFont)
                                 .foregroundStyle(.primary)
                         }
                     }
@@ -201,7 +205,7 @@ struct FocusCardView: View {
                             VStack(alignment: .leading, spacing: 2) {
                                 ForEach(parsed.haikuLines.indices, id: \.self) { idx in
                                     Text(parsed.haikuLines[idx])
-                                        .font(isCompact ? .caption2 : .body)
+                                        .font(responseFont)
                                         .foregroundStyle(.primary)
                                 }
                             }
@@ -214,7 +218,7 @@ struct FocusCardView: View {
                                 .font(isCompact ? .caption.bold() : .headline)
                                 .foregroundStyle(.secondary)
                             Text(parsed.doLine)
-                                .font(isCompact ? .caption2 : .body)
+                                .font(responseFont)
                                 .foregroundStyle(.primary)
                         }
                     }
@@ -225,7 +229,7 @@ struct FocusCardView: View {
                                 .font(isCompact ? .caption.bold() : .headline)
                                 .foregroundStyle(.secondary)
                             Text(parsed.avoidLine)
-                                .font(isCompact ? .caption2 : .body)
+                                .font(responseFont)
                                 .foregroundStyle(.primary)
                         }
                     }
