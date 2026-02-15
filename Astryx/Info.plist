@@ -2,8 +2,6 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-	<key>MCP_BASE_URL</key>
-	<string>https://swiss-ephemeris-mcp.jollycoast-183c219a.westus.azurecontainerapps.io</string>
 	<key>AIPROXY_PARTIAL_KEY
 AIPROXY_PARTIAL_KEY
 AIPROXY_PARTIAL_KEY
@@ -11,5 +9,7 @@ AIPROXY_PARTIAL_KEY</key>
 	<string>$(AIPROXY_PARTIAL_KEY)</string>
 	<key>AIPROXY_SERVICE_URL</key>
 	<string>$(AIPROXY_SERVICE_URL)</string>
+	<key>MCP_BASE_URL</key>
+	<string>https://swiss-ephemeris-mcp.jollycoast-183c219a.westus.azurecontainerapps.io</string>
 </dict>
 </plist>
