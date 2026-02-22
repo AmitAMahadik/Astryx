@@ -1,12 +1,11 @@
 # Astryx setup
 
-## Secrets (required for local run)
+## MCP server URL
 
-Copy `Secrets.xcconfig.example` to `Secrets.xcconfig` and set `MCP_BASE_URL` to your MCP server URL.
+Set your Swiss Ephemeris MCP server base URL in code: edit `Astryx/App/AppConfig.swift` and replace the `mcpBaseURL` value with your deployed endpoint (e.g. Azure Container Apps URL).
 
-```bash
-cp Secrets.xcconfig.example Secrets.xcconfig
-# Edit Secrets.xcconfig and set MCP_BASE_URL = https://your-mcp-server...
-```
+## Secrets (required for AI / local run)
 
-Do not commit `Secrets.xcconfig`; it is listed in `.gitignore`. For CI/App Store builds, set `MCP_BASE_URL` in your CI environment or via a CI-only secret file.
+Copy `Secrets.xcconfig.example` to `Secrets.xcconfig` and set any AI proxy keys (e.g. `AIPROXY_SERVICE_URL`, `AIPROXY_PARTIAL_KEY`) as needed.
+
+Do not commit `Secrets.xcconfig`; it is listed in `.gitignore`.
