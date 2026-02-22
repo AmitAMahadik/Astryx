@@ -33,6 +33,7 @@
 		BCEFD9F72F249AFE000B27BC /* AstryxTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = AstryxTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		BCEFDA012F249AFE000B27BC /* AstryxUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = AstryxUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		BCEFDA162F249BE0000B27BC /* .gitignore */ = {isa = PBXFileReference; lastKnownFileType = text; path = .gitignore; sourceTree = "<group>"; };
+		BCEFDA302F255E46000B27BC /* Secrets.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Secrets.xcconfig; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -96,6 +97,7 @@
 			isa = PBXGroup;
 			children = (
 				BCEFDA162F249BE0000B27BC /* .gitignore */,
+				BCEFDA302F255E46000B27BC /* Secrets.xcconfig */,
 				BCEFD9EA2F249AFC000B27BC /* Astryx */,
 				BCEFD9FA2F249AFE000B27BC /* AstryxTests */,
 				BCEFDA042F249AFE000B27BC /* AstryxUITests */,
@@ -297,6 +299,7 @@
 /* Begin XCBuildConfiguration section */
 		BCEFDA092F249AFE000B27BC /* Debug */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = BCEFDA302F255E46000B27BC /* Secrets.xcconfig */;
 			buildSettings = {
 				AIPROXY_PARTIAL_KEY = "v2|1bb98c48|gO7CG1rPMen7sVxe";
 				AIPROXY_SERVICE_URL = "https://api.aiproxy.com/07603b96/2bbe7ff6";
@@ -350,7 +353,7 @@
 				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
-				IPHONEOS_DEPLOYMENT_TARGET = 26.2;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.6;
 				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
@@ -363,6 +366,7 @@
 		};
 		BCEFDA0A2F249AFE000B27BC /* Release */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = BCEFDA302F255E46000B27BC /* Secrets.xcconfig */;
 			buildSettings = {
 				AIPROXY_PARTIAL_KEY = "v2|1bb98c48|gO7CG1rPMen7sVxe";
 				AIPROXY_SERVICE_URL = "https://api.aiproxy.com/07603b96/2bbe7ff6";
@@ -410,7 +414,7 @@
 				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
-				IPHONEOS_DEPLOYMENT_TARGET = 26.2;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.6;
 				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;

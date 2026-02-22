@@ -14,9 +14,11 @@ enum AppConfig {
             let value = Bundle.main.object(
                 forInfoDictionaryKey: "MCP_BASE_URL"
             ) as? String,
+            !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+            value != "$(MCP_BASE_URL)",
             let url = URL(string: value)
         else {
-            fatalError("❌ MCP_BASE_URL missing or invalid in Info.plist")
+            fatalError("❌ MCP_BASE_URL missing or invalid. Copy Secrets.xcconfig.example to Secrets.xcconfig and set MCP_BASE_URL to your MCP server URL.")
         }
         return url
     }()

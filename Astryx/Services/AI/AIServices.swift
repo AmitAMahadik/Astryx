@@ -215,14 +215,12 @@ final class AIProxyInsightService: AIInsightService {
 
 enum AIInsightServiceFactory {
     static func make() -> any AIInsightService {
-        // TEMPORARY: hard-coded partial key
         let partialKey = "v2|1bb98c48|gO7CG1rPMen7sVxe"
         let serviceURL = "https://api.aiproxy.com/07603b96/2bbe7ff6"
-        
-            return AIProxyInsightService(
-                partialKey: partialKey,
-                serviceURL: serviceURL
-            )
+        return AIProxyInsightService(
+            partialKey: partialKey,
+            serviceURL: serviceURL
+        )
     }
 }
 

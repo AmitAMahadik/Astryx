@@ -443,9 +443,17 @@ struct ProfileView: View {
                         validatedMapItem = first
                         isValidatingPlace = false
 
-                        let coord = first.location.coordinate
-                        state.birthLatitude = coord.latitude
-                        state.birthLongitude = coord.longitude
+                        let coord: CLLocationCoordinate2D? = {
+                            if #available(iOS 26.0, *) {
+                                return first.location.coordinate
+                            } else {
+                                return first.placemark.location?.coordinate
+                            }
+                        }()
+                        if let coord {
+                            state.birthLatitude = coord.latitude
+                            state.birthLongitude = coord.longitude
+                        }
                         state.birthTimeZoneIdentifier = first.timeZone?.identifier
 
                         let city = first.name?.trimmingCharacters(in: .whitespacesAndNewlines)
